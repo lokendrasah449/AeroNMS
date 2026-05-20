@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}AeroNMS{% endblock %} — Buddha Air Network</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="/static/css/aero.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="aero-sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-icon"><i class="bi bi-airplane-fill"></i></div>
+    <div class="brand-text">
+      <span class="brand-name">AeroNMS</span>
+      <span class="brand-sub">Buddha Air · Nepal</span>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a href="/"       class="nav-item {% if request.url.path == '/' %}active{% endif %}">
+      <i class="bi bi-speedometer2"></i><span>Dashboard</span>
+    </a>
+    <a href="/devices" class="nav-item {% if '/devices' in request.url.path %}active{% endif %}">
+      <i class="bi bi-hdd-network-fill"></i><span>Devices</span>
+    </a>
+    <a href="/monitor" class="nav-item {% if '/monitor' in request.url.path %}active{% endif %}">
+      <i class="bi bi-activity"></i><span>Monitor</span>
+    </a>
+    <a href="/topology" class="nav-item {% if '/topology' in request.url.path %}active{% endif %}">
+      <i class="bi bi-diagram-3-fill"></i><span>Topology</span>
+    </a>
+    <a href="/snmp"    class="nav-item {% if '/snmp' in request.url.path %}active{% endif %}">
+      <i class="bi bi-broadcast"></i><span>SNMP</span>
+    </a>
+    <a href="/backup"  class="nav-item {% if '/backup' in request.url.path %}active{% endif %}">
+      <i class="bi bi-cloud-arrow-down-fill"></i><span>Backups</span>
+    </a>
+    <a href="/alerts"  class="nav-item {% if '/alerts' in request.url.path %}active{% endif %}">
+      <i class="bi bi-envelope-fill"></i><span>Email Alerts</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="status-pill online"><span class="dot"></span>System Online</div>
+    <a href="/logout" class="logout-link"><i class="bi bi-box-arrow-left"></i> Logout</a>
+  </div>
+</div>
+
+<div class="aero-main">
+  <div class="aero-topbar">
+    <button class="sidebar-toggle" onclick="toggleSidebar()"><i class="bi bi-list"></i></button>
+    <div class="topbar-title">{% block page_title %}Dashboard{% endblock %}</div>
+    <div class="topbar-right">
+      <span class="clock" id="liveClock"></span>
+      <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">
+        <i class="bi bi-moon-fill icon-moon"></i>
+        <i class="bi bi-sun-fill icon-sun"></i>
+      </button>
+      <span class="topbar-badge"><i class="bi bi-geo-alt-fill"></i> KTM NOC</span>
+    </div>
+  </div>
+
+  {% block alert_banner %}{% endblock %}
+
+  <div class="aero-content">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/js/aero.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

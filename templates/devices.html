@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Devices{% endblock %}
+{% block page_title %}Device Inventory{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <form method="get" action="/devices" class="search-form">
+    <div class="search-wrap">
+      <i class="bi bi-search"></i>
+      <input type="text" name="search" value="{{ search }}"
+             placeholder="Search hostname, IP, location, type…" class="search-input">
+      {% if search %}<a href="/devices" class="search-clear"><i class="bi bi-x-circle"></i></a>{% endif %}
+    </div>
+    <button type="submit" class="btn-aero">Search</button>
+  </form>
+  <div class="toolbar-right">
+    <a href="/devices/export/csv" class="btn-aero btn-csv" title="Export to CSV">
+      <i class="bi bi-file-earmark-spreadsheet-fill"></i> Export CSV
+    </a>
+    <a href="/devices/add" class="btn-aero-primary">
+      <i class="bi bi-plus-lg"></i> Add Device
+    </a>
+  </div>
+</div>
+
+<div class="aero-card mt-3">
+  <div class="card-hdr">
+    <span>
+      <i class="bi bi-hdd-network-fill"></i>
+      {% if search %}Results for "{{ search }}"{% else %}All Network Devices{% endif %}
+      <span class="count-badge">{{ devices|length }}</span>
+    </span>
+  </div>
+  <div class="table-wrap">
+    <table class="aero-table">
+      <thead>
+        <tr>
+          <th>#</th><th>Hostname</th><th>IP Address</th><th>Type</th>
+          <th>Location</th><th>Description</th><th>Status</th><th>Latency</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in devices %}
+        <tr>
+          <td class="mono muted">{{ d.id }}</td>
+          <td>
+            <a href="/devices/detail/{{ d.id }}" class="hostname-link mono fw-semibold">
+              {{ d.hostname }}
+            </a>
+          </td>
+          <td class="mono">{{ d.ip_address }}</td>
+          <td>
+            <span class="type-badge {{ d.device_type }}">
+              {% if d.device_type == 'router' %}<i class="bi bi-router-fill"></i>
+              {% elif d.device_type == 'switch' %}<i class="bi bi-diagram-3-fill"></i>
+              {% elif d.device_type == 'firewall' %}<i class="bi bi-shield-fill"></i>
+              {% elif d.device_type == 'server' %}<i class="bi bi-server"></i>
+              {% else %}<i class="bi bi-wifi"></i>{% endif %}
+              {{ d.device_type }}
+            </span>
+          </td>
+          <td><i class="bi bi-geo-alt-fill loc-icon"></i> {{ d.location }}</td>
+          <td class="muted small">{{ d.description or '—' }}</td>
+          <td>
+            <span class="status-pill {{ d.status.lower() }}">
+              <span class="dot"></span>{{ d.status }}
+            </span>
+          </td>
+          <td class="mono">
+            {% if d.latency_ms %}{{ "%.1f"|format(d.latency_ms) }} ms{% else %}—{% endif %}
+          </td>
+          <td>
+            <div class="action-btns">
+              <a href="/devices/detail/{{ d.id }}" class="action-btn detail-btn" title="View detail">
+                <i class="bi bi-bar-chart-line-fill"></i>
+              </a>
+              <a href="/devices/edit/{{ d.id }}" class="action-btn edit" title="Edit">
+                <i class="bi bi-pencil-fill"></i>
+              </a>
+              <form method="post" action="/devices/delete/{{ d.id }}" style="margin:0"
+                    onsubmit="return confirm('Delete {{ d.hostname }}?')">
+                <button type="submit" class="action-btn delete" title="Delete">
+                  <i class="bi bi-trash3-fill"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="9" class="empty-row">
+            {% if search %}No devices match "{{ search }}". <a href="/devices">Clear →</a>
+            {% else %}No devices. <a href="/devices/add">Add one →</a>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

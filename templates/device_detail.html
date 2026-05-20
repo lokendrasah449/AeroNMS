@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% block title %}{{ device.hostname }}{% endblock %}
+{% block page_title %}Device Detail — {{ device.hostname }}{% endblock %}
+
+{% block content %}
+<!-- Header row -->
+<div class="detail-header">
+  <div class="detail-icon {{ device.device_type }}">
+    {% if device.device_type == 'router' %}<i class="bi bi-router-fill"></i>
+    {% elif device.device_type == 'switch' %}<i class="bi bi-diagram-3-fill"></i>
+    {% elif device.device_type == 'firewall' %}<i class="bi bi-shield-fill"></i>
+    {% elif device.device_type == 'server' %}<i class="bi bi-server"></i>
+    {% else %}<i class="bi bi-wifi"></i>{% endif %}
+  </div>
+  <div class="detail-title-group">
+    <h2 class="detail-hostname mono">{{ device.hostname }}</h2>
+    <div class="detail-meta">
+      <span><i class="bi bi-geo-alt-fill"></i> {{ device.location }}</span>
+      <span><i class="bi bi-ethernet"></i> {{ device.ip_address }}</span>
+      <span class="type-badge {{ device.device_type }}">{{ device.device_type }}</span>
+    </div>
+  </div>
+  <div class="detail-actions">
+    <span class="status-pill {{ device.status.lower() }} lg">
+      <span class="dot"></span>{{ device.status }}
+    </span>
+    <a href="/devices/edit/{{ device.id }}" class="btn-aero"><i class="bi bi-pencil-fill"></i> Edit</a>
+    <a href="/devices" class="btn-aero"><i class="bi bi-arrow-left"></i> Back</a>
+  </div>
+</div>
+
+<!-- KPI Cards -->
+<div class="detail-kpis">
+  <div class="kpi-card">
+    <div class="kpi-label">Uptime (24h)</div>
+    <div class="kpi-value {% if uptime_24h and uptime_24h >= 95 %}up{% elif uptime_24h and uptime_24h < 80 %}down{% else %}unknown{% endif %}">
+      {% if uptime_24h is not none %}{{ uptime_24h }}%{% else %}No data{% endif %}
+    </div>
+    <div class="kpi-bar">
+      <div class="kpi-fill" style="width:{{ uptime_24h or 0 }}%"></div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Uptime (7 days)</div>
+    <div class="kpi-value {% if uptime_7d and uptime_7d >= 95 %}up{% elif uptime_7d and uptime_7d < 80 %}down{% else %}unknown{% endif %}">
+      {% if uptime_7d is not none %}{{ uptime_7d }}%{% else %}No data{% endif %}
+    </div>
+    <div class="kpi-bar">
+      <div class="kpi-fill" style="width:{{ uptime_7d or 0 }}%"></div>
+    </div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Avg Latency (24h)</div>
+    <div class="kpi-value accent">
+      {% if avg_lat %}{{ avg_lat }} ms{% else %}No data{% endif %}
+    </div>
+    <div class="kpi-sub">Current: {% if device.latency_ms %}{{ "%.1f"|format(device.latency_ms) }} ms{% else %}—{% endif %}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Ping Checks</div>
+    <div class="kpi-value accent">{{ history|length }}</div>
+    <div class="kpi-sub">Last: {% if device.last_checked %}{{ device.last_checked.strftime('%H:%M:%S') }}{% else %}Never{% endif %}</div>
+  </div>
+</div>
+
+<div class="row g-4 mt-1">
+  <!-- Latency Chart -->
+  <div class="col-lg-8">
+    <div class="aero-card">
+      <div class="card-hdr">
+        <span><i class="bi bi-graph-up"></i> Latency History</span>
+        <div class="chart-controls">
+          <button class="btn-aero-sm active-filter" onclick="setFilter(this,60)" data-limit="60">Last 60</button>
+          <button class="btn-aero-sm" onclick="setFilter(this,30)" data-limit="30">Last 30</button>
+          <button class="btn-aero-sm" onclick="setFilter(this,10)" data-limit="10">Last 10</button>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="latencyChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Status Timeline -->
+    <div class="aero-card mt-4">
+      <div class="card-hdr"><span><i class="bi bi-clock-history"></i> Status Timeline</span></div>
+      <div class="timeline-wrap">
+        {% for h in history[-60:] %}
+        <div class="timeline-tick {{ h.status.lower() }}"
+             title="{{ h.checked_at.strftime('%H:%M:%S') if h.checked_at else '' }} — {{ h.status }}{% if h.latency_ms %} ({{ '%.1f'|format(h.latency_ms) }}ms){% endif %}">
+        </div>
+        {% else %}
+        <div class="muted small" style="padding:16px">No history yet — run a monitor scan first.</div>
+        {% endfor %}
+      </div>
+      <div class="timeline-legend">
+        <span class="tl-item up"><span class="dot"></span> UP</span>
+        <span class="tl-item down"><span class="dot"></span> DOWN</span>
+        <span class="tl-item unknown"><span class="dot"></span> UNKNOWN</span>
+        <span class="tl-meta">← oldest &nbsp;&nbsp; newest →</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right column -->
+  <div class="col-lg-4">
+    <!-- Device info -->
+    <div class="aero-card">
+      <div class="card-hdr"><span><i class="bi bi-info-circle-fill"></i> Device Info</span></div>
+      <div class="detail-info-list">
+        <div class="di-row"><span class="di-k">Hostname</span><span class="di-v mono">{{ device.hostname }}</span></div>
+        <div class="di-row"><span class="di-k">IP Address</span><span class="di-v mono">{{ device.ip_address }}</span></div>
+        <div class="di-row"><span class="di-k">Type</span><span class="di-v"><span class="type-badge {{ device.device_type }}">{{ device.device_type }}</span></span></div>
+        <div class="di-row"><span class="di-k">Location</span><span class="di-v">{{ device.location }}</span></div>
+        <div class="di-row"><span class="di-k">Description</span><span class="di-v muted">{{ device.description or '—' }}</span></div>
+        <div class="di-row"><span class="di-k">Added</span><span class="di-v mono muted">{{ device.created_at.strftime('%Y-%m-%d') if device.created_at else '—' }}</span></div>
+        {% if parent %}
+        <div class="di-row">
+          <span class="di-k">Connected to</span>
+          <span class="di-v"><a href="/devices/detail/{{ parent.id }}" class="mono">{{ parent.hostname }}</a></span>
+        </div>
+        {% endif %}
+        {% if children %}
+        <div class="di-row">
+          <span class="di-k">Downstream</span>
+          <span class="di-v">
+            {% for c in children %}<a href="/devices/detail/{{ c.id }}" class="mono small">{{ c.hostname }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="aero-card mt-4">
+      <div class="card-hdr">
+        <span><i class="bi bi-journal-text"></i> Maintenance Notes</span>
+        <button class="btn-aero-sm" onclick="toggleNoteEdit()"><i class="bi bi-pencil-fill"></i> Edit</button>
+      </div>
+      <div class="notes-view" id="notesView">
+        <div class="notes-text">{{ device.notes or 'No notes. Click Edit to add maintenance notes.' }}</div>
+      </div>
+      <div class="notes-edit" id="notesEdit" style="display:none">
+        <textarea id="notesArea" rows="5" placeholder="Add maintenance notes, scheduled downtime, issues...">{{ device.notes or '' }}</textarea>
+        <div class="notes-actions">
+          <button class="btn-aero" onclick="toggleNoteEdit()">Cancel</button>
+          <button class="btn-aero-primary" onclick="saveNotes()"><i class="bi bi-check-lg"></i> Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SNMP Quick Info — loaded async after page renders -->
+    <div class="aero-card mt-4">
+      <div class="card-hdr">
+        <span><i class="bi bi-broadcast"></i> SNMP Info</span>
+        <span id="snmpBadge" class="status-pill unknown" style="font-size:10px;padding:2px 8px">
+          <span class="dot pulse"></span>Loading…
+        </span>
+      </div>
+      <div id="snmpPanel" class="detail-info-list">
+        <div class="di-row" style="justify-content:center;padding:20px">
+          <span class="muted small"><i class="bi bi-arrow-repeat spin"></i> Fetching SNMP data…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const deviceId = {{ device.id }};
+let chartInstance = null;
+let allHistory = [];
+
+async function loadHistory(limit) {
+  const res  = await fetch(`/api/device/${deviceId}/history?limit=${limit}`);
+  allHistory = await res.json();
+  renderChart(allHistory);
+}
+
+function renderChart(data) {
+  const labels    = data.map(d => d.checked_at);
+  const latencies = data.map(d => d.latency_ms);
+  const statuses  = data.map(d => d.status);
+
+  const pointColors = statuses.map(s =>
+    s === 'UP' ? 'rgba(0,232,150,0.9)' : 'rgba(255,61,90,0.9)'
+  );
+
+  const isLight = document.body.classList.contains('light-mode');
+  const gridColor  = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)';
+  const labelColor = isLight ? '#5a7080' : '#5a7a9a';
+  const textColor  = isLight ? '#1a2d3d' : '#d4e8ff';
+
+  if (chartInstance) chartInstance.destroy();
+
+  chartInstance = new Chart(document.getElementById('latencyChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Latency (ms)',
+        data: latencies,
+        borderColor: 'rgba(0,170,255,0.8)',
+        backgroundColor: 'rgba(0,170,255,0.06)',
+        borderWidth: 2,
+        pointBackgroundColor: pointColors,
+        pointBorderColor: pointColors,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        tension: 0.3,
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: isLight ? '#fff' : '#111c2b',
+          borderColor: isLight ? '#d0dce8' : '#1e3050',
+          borderWidth: 1,
+          titleColor: textColor,
+          bodyColor: labelColor,
+          callbacks: {
+            afterBody: (items) => {
+              const idx = items[0].dataIndex;
+              return `Status: ${statuses[idx]}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: labelColor, maxTicksLimit: 8, font: { family: "'Share Tech Mono'" } },
+          grid: { color: gridColor },
+        },
+        y: {
+          ticks: { color: labelColor, font: { family: "'Share Tech Mono'" },
+                   callback: v => v !== null ? v + ' ms' : 'DOWN' },
+          grid: { color: gridColor },
+          beginAtZero: true,
+        }
+      }
+    }
+  });
+}
+
+function setFilter(btn, limit) {
+  document.querySelectorAll('.chart-controls .btn-aero-sm').forEach(b => b.classList.remove('active-filter'));
+  btn.classList.add('active-filter');
+  loadHistory(limit);
+}
+
+function toggleNoteEdit() {
+  const v = document.getElementById('notesView');
+  const e = document.getElementById('notesEdit');
+  if (e.style.display === 'none') { e.style.display = 'block'; v.style.display = 'none'; }
+  else { e.style.display = 'none'; v.style.display = 'block'; }
+}
+
+async function saveNotes() {
+  const notes = document.getElementById('notesArea').value;
+  const form  = new FormData();
+  // Fetch current device data then submit edit
+  const res = await fetch(`/devices/edit/${deviceId}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({
+      hostname:    '{{ device.hostname }}',
+      ip_address:  '{{ device.ip_address }}',
+      device_type: '{{ device.device_type }}',
+      location:    '{{ device.location }}',
+      description: '{{ device.description or "" }}',
+      notes:       notes,
+      parent_id:   '{{ device.parent_id or "" }}',
+    }),
+    redirect: 'manual'
+  });
+  document.getElementById('notesView').querySelector('.notes-text').textContent = notes || 'No notes.';
+  toggleNoteEdit();
+}
+
+window.addEventListener('load', () => {
+  loadHistory(60);
+  loadSnmp();
+});
+
+async function loadSnmp() {
+  try {
+    const res  = await fetch(`/api/snmp/${deviceId}`);
+    const data = await res.json();
+    const isLive = data.method === 'snmpget';
+    document.getElementById('snmpBadge').className =
+      `status-pill ${isLive ? 'up' : 'unknown'}`;
+    document.getElementById('snmpBadge').style.cssText = 'font-size:10px;padding:2px 8px';
+    document.getElementById('snmpBadge').innerHTML =
+      `<span class="dot"></span>${isLive ? 'Live SNMP' : 'Simulated'}`;
+    const desc = (data.sysDescr || '—').slice(0,40) + ((data.sysDescr||'').length > 40 ? '…' : '');
+    const uptime = (data.sysUpTime || '—').split('(')[0].trim();
+    document.getElementById('snmpPanel').innerHTML = `
+      <div class="di-row"><span class="di-k">System</span><span class="di-v mono small">${desc}</span></div>
+      <div class="di-row"><span class="di-k">Uptime</span><span class="di-v mono">${uptime}</span></div>
+      <div class="di-row"><span class="di-k">Interfaces</span><span class="di-v mono">${data.ifNumber || '—'}</span></div>
+      <div class="di-row"><span class="di-k">Contact</span><span class="di-v small muted">${data.sysContact || '—'}</span></div>`;
+  } catch(e) {
+    document.getElementById('snmpPanel').innerHTML =
+      '<div class="di-row" style="padding:16px"><span class="muted small">Failed to load SNMP data</span></div>';
+  }
+}
+</script>
+{% endblock %}

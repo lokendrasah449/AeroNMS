@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AeroNMS — Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="/static/css/aero.css" rel="stylesheet">
+</head>
+<body class="login-body">
+
+<div class="login-bg">
+  <div class="grid-overlay"></div>
+</div>
+
+<button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme"
+        style="position:fixed;top:16px;right:16px;z-index:10">
+  <i class="bi bi-moon-fill icon-moon"></i>
+  <i class="bi bi-sun-fill icon-sun"></i>
+</button>
+<div class="login-wrap">
+<button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme" style="position:fixed;top:16px;right:16px;z-index:10">
+  <i class="bi bi-moon-fill icon-moon"></i>
+  <i class="bi bi-sun-fill icon-sun"></i>
+</button>
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-icon"><i class="bi bi-airplane-fill"></i></div>
+      <h1 class="login-title">AeroNMS</h1>
+      <p class="login-subtitle">Buddha Air · Network Operations Center</p>
+    </div>
+
+    {% if error %}
+    <div class="login-error">
+      <i class="bi bi-exclamation-triangle-fill"></i> {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="post" action="/login">
+      <div class="login-field">
+        <label>Username</label>
+        <div class="field-wrap">
+          <i class="bi bi-person-fill"></i>
+          <input type="text" name="username" placeholder="Enter username" autocomplete="username" required>
+        </div>
+      </div>
+      <div class="login-field">
+        <label>Password</label>
+        <div class="field-wrap">
+          <i class="bi bi-lock-fill"></i>
+          <input type="password" name="password" placeholder="Enter password" autocomplete="current-password" required>
+        </div>
+      </div>
+      <button type="submit" class="login-btn">
+        <i class="bi bi-shield-check"></i> Sign In to NOC
+      </button>
+    </form>
+
+    <div class="login-hint">
+      <small>Demo: <code>admin</code> / <code>aero2024</code></small>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/aero.js"></script>
+<script>
+  (function(){
+    var t = localStorage.getItem('aeronms-theme') || 'dark';
+    if(t === 'light') document.body.classList.add('light-mode');
+  })();
+</script>
+</body>
+</html>

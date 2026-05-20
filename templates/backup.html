@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Backups{% endblock %}
+{% block page_title %}Config Backup Manager{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <div class="backup-controls">
+    <button class="btn-aero-primary" onclick="backupAll()">
+      <i class="bi bi-cloud-arrow-down-fill"></i> Backup All Devices
+    </button>
+    <span class="muted small">Configs saved to <code>/backups/</code></span>
+  </div>
+  <div id="backupStatus"></div>
+</div>
+
+<div class="row g-4 mt-1">
+  <!-- Device list with per-device backup -->
+  <div class="col-lg-7">
+    <div class="aero-card">
+      <div class="card-hdr">
+        <span><i class="bi bi-hdd-network-fill"></i> Devices</span>
+        <span class="count-badge">{{ devices|length }}</span>
+      </div>
+      <div class="table-wrap">
+        <table class="aero-table">
+          <thead>
+            <tr>
+              <th>Hostname</th>
+              <th>IP</th>
+              <th>Type</th>
+              <th>Location</th>
+              <th>Backup</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in devices %}
+            <tr id="brow-{{ d.id }}">
+              <td class="mono fw-semibold">{{ d.hostname }}</td>
+              <td class="mono">{{ d.ip_address }}</td>
+              <td>
+                <span class="type-badge {{ d.device_type }}">
+                  {% if d.device_type == 'router' %}<i class="bi bi-router-fill"></i>
+                  {% elif d.device_type == 'switch' %}<i class="bi bi-diagram-3-fill"></i>
+                  {% elif d.device_type == 'firewall' %}<i class="bi bi-shield-fill"></i>
+                  {% elif d.device_type == 'server' %}<i class="bi bi-server"></i>
+                  {% else %}<i class="bi bi-wifi"></i>{% endif %}
+                  {{ d.device_type }}
+                </span>
+              </td>
+              <td class="small muted">{{ d.location }}</td>
+              <td>
+                <button class="btn-aero-sm" onclick="backupDevice({{ d.id }}, '{{ d.hostname }}')"
+                        id="bbtn-{{ d.id }}">
+                  <i class="bi bi-download"></i> Backup
+                </button>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="empty-row">No devices. <a href="/devices/add">Add one →</a></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Backup file list -->
+  <div class="col-lg-5">
+    <div class="aero-card">
+      <div class="card-hdr">
+        <span><i class="bi bi-folder2-open"></i> Saved Backup Files</span>
+        <span class="count-badge">{{ backups|length }}</span>
+      </div>
+      <div class="backup-file-list" id="backupFileList">
+        {% for b in backups %}
+        <div class="backup-file-item">
+          <div class="bf-icon"><i class="bi bi-file-earmark-text-fill"></i></div>
+          <div class="bf-info">
+            <div class="bf-name mono">{{ b.name }}</div>
+            <div class="bf-meta">{{ b.modified }} &bull; {{ b.size }} bytes</div>
+          </div>
+        </div>
+        {% else %}
+        <div class="no-alerts" id="noBackupsMsg">
+          <i class="bi bi-inbox"></i> No backups yet — click Backup to generate
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="aero-card mt-4">
+      <div class="card-hdr"><span><i class="bi bi-info-circle-fill"></i> About Config Backup</span></div>
+      <div class="info-text">
+        <p>Backup files are saved to the <code>backups/</code> directory of the AeroNMS installation.</p>
+        <p>Each file contains a simulated device configuration snapshot — hostname, interfaces, routing, VLAN, firewall rules, and more.</p>
+        <p>File format: <code>HOSTNAME_YYYYMMDD_HHMMSS.txt</code></p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function backupDevice(id, hostname) {
+  const btn = document.getElementById('bbtn-' + id);
+  btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i>';
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/backup/' + id, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showStatus('✓ ' + hostname + ' backed up → ' + data.filename, 'success');
+      addBackupFileItem(data.filename);
+      btn.innerHTML = '<i class="bi bi-check-lg"></i> Done';
+      setTimeout(() => { btn.innerHTML = '<i class="bi bi-download"></i> Backup'; btn.disabled = false; }, 2000);
+    }
+  } catch(e) {
+    btn.innerHTML = '<i class="bi bi-download"></i> Backup'; btn.disabled = false;
+  }
+}
+
+async function backupAll() {
+  showStatus('<i class="bi bi-arrow-repeat spin"></i> Backing up all devices…', 'info');
+  try {
+    const res = await fetch('/api/backup/all', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showStatus('✓ Backed up ' + data.count + ' devices successfully', 'success');
+      data.files.forEach(f => addBackupFileItem(f));
+    }
+  } catch(e) { showStatus('Error during backup', 'error'); }
+}
+
+function addBackupFileItem(filename) {
+  const list = document.getElementById('backupFileList');
+  const noMsg = document.getElementById('noBackupsMsg');
+  if (noMsg) noMsg.remove();
+  const now = new Date().toLocaleString('en-GB', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const div = document.createElement('div');
+  div.className = 'backup-file-item new-item';
+  div.innerHTML = `
+    <div class="bf-icon"><i class="bi bi-file-earmark-text-fill"></i></div>
+    <div class="bf-info">
+      <div class="bf-name mono">${filename}</div>
+      <div class="bf-meta">${now}</div>
+    </div>`;
+  list.prepend(div);
+}
+
+function showStatus(msg, type) {
+  const el = document.getElementById('backupStatus');
+  el.innerHTML = `<div class="status-toast ${type}">${msg}</div>`;
+  setTimeout(() => { el.innerHTML = ''; }, 4000);
+}
+</script>
+{% endblock %}

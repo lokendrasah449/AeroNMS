@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ action }} Device{% endblock %}
+{% block page_title %}{{ action }} Device{% endblock %}
+
+{% block content %}
+<div class="form-wrap" style="max-width:800px">
+  <div class="aero-card">
+    <div class="card-hdr">
+      <span>
+        <i class="bi bi-{% if action == 'Add' %}plus-circle-fill{% else %}pencil-fill{% endif %}"></i>
+        {{ action }} Network Device
+      </span>
+    </div>
+    <form method="post" action="/devices/{% if device %}edit/{{ device.id }}{% else %}add{% endif %}" class="aero-form">
+      <div class="form-grid">
+        <div class="field-group">
+          <label>Hostname <span class="required">*</span></label>
+          <input type="text" name="hostname" value="{{ device.hostname if device else '' }}"
+                 placeholder="e.g. KTM-Router-01" required>
+          <span class="field-hint">Format: LOCATION-TYPE-NN</span>
+        </div>
+        <div class="field-group">
+          <label>IP Address <span class="required">*</span></label>
+          <input type="text" name="ip_address" value="{{ device.ip_address if device else '' }}"
+                 placeholder="e.g. 10.1.1.1" required>
+        </div>
+        <div class="field-group">
+          <label>Device Type <span class="required">*</span></label>
+          <select name="device_type" required>
+            {% for t in ['router','switch','firewall','server','ap'] %}
+            <option value="{{ t }}" {% if device and device.device_type == t %}selected{% endif %}>
+              {{ t | capitalize }}{% if t == 'ap' %} (Access Point){% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Location <span class="required">*</span></label>
+          <div class="combo-wrap">
+            <input
+              type="text"
+              name="location"
+              id="locationInput"
+              list="locationList"
+              value="{{ device.location if device else '' }}"
+              placeholder="Select or type a location…"
+              autocomplete="off"
+              required
+            >
+            <datalist id="locationList">
+              {% for loc in ['Kathmandu HQ','Pokhara Airport','Bharatpur Airport','Biratnagar Airport',
+                             'Janakpur Airport','Tumlingtar Airport','Bhairahawa Airport',
+                             'Nepalgunj Airport','Dhangadhi Airport','Lukla Airport',
+                             'Simara Airport','Ramechhap Airport','Surkhet Airport',
+                             'Dolpa Airport','Jumla Airport','Taplejung Airport'] %}
+              <option value="{{ loc }}">
+              {% endfor %}
+              {# Also show any custom locations already in the database #}
+              {% for loc in existing_locations | default([]) %}
+              <option value="{{ loc }}">
+              {% endfor %}
+            </datalist>
+          </div>
+          <span class="field-hint">Choose an existing location or type a new one (e.g. "Mustang Office")</span>
+        </div>
+        <div class="field-group full-width">
+          <label>Connected To (Parent Device)</label>
+          <select name="parent_id">
+            <option value="">— None (standalone) —</option>
+            {% for d in all_devices %}
+            <option value="{{ d.id }}" {% if device and device.parent_id == d.id %}selected{% endif %}>
+              {{ d.hostname }} ({{ d.ip_address }}) — {{ d.device_type }}
+            </option>
+            {% endfor %}
+          </select>
+          <span class="field-hint">Used to draw connections on the Topology map</span>
+        </div>
+        <div class="field-group full-width">
+          <label>Description</label>
+          <input type="text" name="description" value="{{ device.description if device else '' }}"
+                 placeholder="e.g. Core internet gateway router — Terminal B">
+        </div>
+        <div class="field-group full-width">
+          <label>Maintenance Notes</label>
+          <textarea name="notes" rows="3"
+                    placeholder="e.g. Scheduled maintenance every Sunday 2am. Last rebooted 2024-05-01.">{{ device.notes if device else '' }}</textarea>
+          <span class="field-hint">Internal notes visible on device detail page</span>
+        </div>
+      </div>
+      <div class="form-actions">
+        <a href="/devices" class="btn-aero"><i class="bi bi-arrow-left"></i> Cancel</a>
+        <button type="submit" class="btn-aero-primary">
+          <i class="bi bi-{% if action == 'Add' %}plus-lg{% else %}check-lg{% endif %}"></i>
+          {{ action }} Device
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

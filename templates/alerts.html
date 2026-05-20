@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Email Alerts{% endblock %}
+{% block page_title %}Email Alert Configuration{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+  <!-- Config form -->
+  <div class="col-lg-7">
+    <div class="aero-card">
+      <div class="card-hdr">
+        <span><i class="bi bi-envelope-fill"></i> SMTP Configuration</span>
+        {% if cfg.get('enabled') %}
+          <span class="status-pill up"><span class="dot"></span>Alerts Enabled</span>
+        {% else %}
+          <span class="status-pill unknown"><span class="dot"></span>Alerts Disabled</span>
+        {% endif %}
+      </div>
+      <form class="aero-form" id="alertForm">
+        <div class="form-grid">
+          <div class="field-group">
+            <label>SMTP Host <span class="required">*</span></label>
+            <input type="text" name="smtp_host" id="smtp_host"
+                   value="{{ cfg.get('smtp_host','') }}" placeholder="smtp.gmail.com">
+            <span class="field-hint">e.g. smtp.gmail.com / smtp.office365.com</span>
+          </div>
+          <div class="field-group">
+            <label>SMTP Port <span class="required">*</span></label>
+            <select name="smtp_port" id="smtp_port">
+              <option value="587" {% if cfg.get('smtp_port')==587 %}selected{% endif %}>587 — TLS (recommended)</option>
+              <option value="465" {% if cfg.get('smtp_port')==465 %}selected{% endif %}>465 — SSL</option>
+              <option value="25"  {% if cfg.get('smtp_port')==25  %}selected{% endif %}>25  — Plain (not recommended)</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label>SMTP Username <span class="required">*</span></label>
+            <input type="text" name="smtp_user" id="smtp_user"
+                   value="{{ cfg.get('smtp_user','') }}" placeholder="alerts@buddhaair.com.np">
+          </div>
+          <div class="field-group">
+            <label>SMTP Password <span class="required">*</span></label>
+            <input type="password" name="smtp_pass" id="smtp_pass"
+                   value="{{ cfg.get('smtp_pass','') }}" placeholder="App password or SMTP password">
+            <span class="field-hint">For Gmail, use an App Password</span>
+          </div>
+          <div class="field-group">
+            <label>From Address <span class="required">*</span></label>
+            <input type="email" name="from_addr" id="from_addr"
+                   value="{{ cfg.get('from_addr','') }}" placeholder="noc@buddhaair.com.np">
+          </div>
+          <div class="field-group">
+            <label>To Address(es) <span class="required">*</span></label>
+            <input type="text" name="to_addrs" id="to_addrs"
+                   value="{{ cfg.get('to_addrs', [])|join(', ') if cfg.get('to_addrs') else '' }}"
+                   placeholder="noc@buddhaair.com.np, admin@buddhaair.com.np">
+            <span class="field-hint">Comma-separated for multiple recipients</span>
+          </div>
+          <div class="field-group full-width">
+            <label class="toggle-label" style="flex-direction:row;gap:12px;align-items:center;">
+              <input type="checkbox" name="enabled" id="enabled"
+                     {% if cfg.get('enabled') %}checked{% endif %}
+                     onchange="updateToggleLabel(this)">
+              <span class="toggle-slider"></span>
+              <span id="enabledLabel">
+                {% if cfg.get('enabled') %}Email alerts are <strong style="color:var(--up)">ENABLED</strong>
+                {% else %}Email alerts are <strong style="color:var(--text-muted)">DISABLED</strong>{% endif %}
+              </span>
+            </label>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-aero" onclick="testAlert()">
+            <i class="bi bi-send-fill"></i> Send Test Email
+          </button>
+          <button type="button" class="btn-aero-primary" onclick="saveConfig()">
+            <i class="bi bi-check-lg"></i> Save Configuration
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Result toast -->
+    <div id="alertResult" class="mt-3"></div>
+  </div>
+
+  <!-- Info + log panel -->
+  <div class="col-lg-5">
+    <div class="aero-card">
+      <div class="card-hdr"><span><i class="bi bi-info-circle-fill"></i> Setup Guide</span></div>
+      <div class="info-text">
+        <p><strong style="color:var(--accent)">Gmail Setup:</strong></p>
+        <p>1. Enable 2FA on your Google account<br>
+           2. Go to <em>Google Account → Security → App Passwords</em><br>
+           3. Create an App Password for "Mail"<br>
+           4. Use that 16-char password here</p>
+        <hr style="border-color:var(--border);margin:12px 0">
+        <p><strong style="color:var(--accent)">When alerts fire:</strong></p>
+        <p>An email is sent automatically whenever a device goes <span style="color:var(--down)">DOWN</span> during a monitor ping. HTML-formatted with device details and timestamp.</p>
+        <hr style="border-color:var(--border);margin:12px 0">
+        <p><strong style="color:var(--accent)">Config file:</strong></p>
+        <p>Settings saved to <code>email_config.json</code> in the project root.</p>
+      </div>
+    </div>
+
+    <div class="aero-card mt-4">
+      <div class="card-hdr">
+        <span><i class="bi bi-journal-text"></i> Alert Log</span>
+        <button class="btn-aero-sm" onclick="refreshLog()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+      </div>
+      <div class="alerts-list" id="alertLogList">
+        <div class="no-alerts"><i class="bi bi-hourglass-split"></i> Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getFormData() {
+  return {
+    smtp_host: document.getElementById('smtp_host').value,
+    smtp_port: document.getElementById('smtp_port').value,
+    smtp_user: document.getElementById('smtp_user').value,
+    smtp_pass: document.getElementById('smtp_pass').value,
+    from_addr: document.getElementById('from_addr').value,
+    to_addrs:  document.getElementById('to_addrs').value,
+    enabled:   document.getElementById('enabled').checked ? 'on' : 'off',
+  };
+}
+
+async function postForm(url) {
+  const data = getFormData();
+  const body = new URLSearchParams(data);
+  const res  = await fetch(url, { method: 'POST', body });
+  return res.json();
+}
+
+async function saveConfig() {
+  showResult('Saving…', 'info');
+  const r = await postForm('/api/alerts/config');
+  showResult(r.success ? '✓ Configuration saved successfully' : '✗ ' + r.reason, r.success ? 'success' : 'error');
+}
+
+async function testAlert() {
+  showResult('<i class="bi bi-arrow-repeat spin"></i> Sending test email…', 'info');
+  const r = await postForm('/api/alerts/test');
+  showResult(
+    r.success ? `✓ Test email sent to: ${r.to}` : `✗ Failed: ${r.reason}`,
+    r.success ? 'success' : 'error'
+  );
+}
+
+function showResult(msg, type) {
+  document.getElementById('alertResult').innerHTML =
+    `<div class="status-toast ${type}">${msg}</div>`;
+  if (type !== 'info') setTimeout(() => { document.getElementById('alertResult').innerHTML = ''; }, 5000);
+}
+
+function updateToggleLabel(cb) {
+  document.getElementById('enabledLabel').innerHTML = cb.checked
+    ? 'Email alerts are <strong style="color:var(--up)">ENABLED</strong>'
+    : 'Email alerts are <strong style="color:var(--text-muted)">DISABLED</strong>';
+}
+
+async function refreshLog() {
+  const res  = await fetch('/api/alerts/log');
+  const data = await res.json();
+  const el   = document.getElementById('alertLogList');
+  if (!data.alerts.length) {
+    el.innerHTML = '<div class="no-alerts"><i class="bi bi-check-all"></i> No alerts logged yet</div>';
+    return;
+  }
+  el.innerHTML = data.alerts.map(a =>
+    `<div class="alert-item"><i class="bi bi-exclamation-triangle-fill"></i><span>${a}</span></div>`
+  ).join('');
+}
+
+window.addEventListener('load', refreshLog);
+</script>
+{% endblock %}

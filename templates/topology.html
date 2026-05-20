@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+{% block title %}Topology{% endblock %}
+{% block page_title %}Network Topology Map{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <div class="topo-controls">
+    <button class="btn-aero-primary" onclick="reloadTopology()">
+      <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
+    <div class="field-inline">
+      <label>Layout</label>
+      <select id="layoutSelect" onchange="changeLayout(this.value)">
+        <option value="hierarchical">Hierarchical</option>
+        <option value="force">Force-Directed</option>
+        <option value="grid">Grid</option>
+      </select>
+    </div>
+    <div class="field-inline">
+      <label>Filter</label>
+      <select id="filterSelect" onchange="applyFilter(this.value)">
+        <option value="all">All Devices</option>
+        <option value="router">Routers</option>
+        <option value="switch">Switches</option>
+        <option value="firewall">Firewalls</option>
+        <option value="server">Servers</option>
+        <option value="ap">Access Points</option>
+      </select>
+    </div>
+  </div>
+  <div class="topo-legend">
+    <span class="tl-item router"><i class="bi bi-router-fill"></i> Router</span>
+    <span class="tl-item switch"><i class="bi bi-diagram-3-fill"></i> Switch</span>
+    <span class="tl-item firewall"><i class="bi bi-shield-fill"></i> Firewall</span>
+    <span class="tl-item server"><i class="bi bi-server"></i> Server</span>
+    <span class="tl-item ap"><i class="bi bi-wifi"></i> AP</span>
+  </div>
+</div>
+
+<div class="aero-card mt-3 topo-card">
+  <div class="card-hdr">
+    <span><i class="bi bi-diagram-3-fill"></i> Live Network Topology — Buddha Air</span>
+    <div class="topo-status-legend">
+      <span class="ts-item"><span class="ts-dot up"></span> UP</span>
+      <span class="ts-item"><span class="ts-dot down"></span> DOWN</span>
+      <span class="ts-item"><span class="ts-dot unknown"></span> Unknown</span>
+      <span id="topoNodeCount" class="count-badge">0 nodes</span>
+    </div>
+  </div>
+  <div id="topoContainer">
+    <canvas id="topoCanvas"></canvas>
+    <div id="topoTooltip" class="topo-tooltip" style="display:none"></div>
+    <div id="topoEmpty" class="topo-empty" style="display:none">
+      <i class="bi bi-diagram-3"></i>
+      <p>No topology data yet.</p>
+      <p class="small muted">Add devices and set parent connections to build your map.</p>
+    </div>
+  </div>
+</div>
+
+<div class="aero-card mt-4" id="selectedNodeCard" style="display:none">
+  <div class="card-hdr">
+    <span><i class="bi bi-crosshair"></i> Selected Device</span>
+    <button class="btn-aero-sm" onclick="clearSelection()"><i class="bi bi-x"></i> Clear</button>
+  </div>
+  <div id="selectedNodeInfo" class="detail-info-list"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let topoData = { nodes: [], edges: [] };
+let filteredNodes = [];
+let filteredEdges = [];
+let animFrame = null;
+let layoutMode = 'hierarchical';
+let nodePositions = {};
+let dragging = null;
+let dragOffset = { x: 0, y: 0 };
+let selectedNode = null;
+let hoveredNode  = null;
+let filterType   = 'all';
+let simTick = 0;
+
+const TYPE_COLORS = {
+  router:   { fill: 'rgba(0,170,255,0.15)',   stroke: '#00aaff', icon: '⬡' },
+  switch:   { fill: 'rgba(167,139,250,0.15)', stroke: '#a78bfa', icon: '⬡' },
+  firewall: { fill: 'rgba(255,107,53,0.15)',  stroke: '#ff6b35', icon: '⬡' },
+  server:   { fill: 'rgba(34,211,238,0.15)',  stroke: '#22d3ee', icon: '⬡' },
+  ap:       { fill: 'rgba(74,222,128,0.15)',  stroke: '#4ade80', icon: '⬡' },
+};
+const STATUS_COLORS = { UP: '#00e896', DOWN: '#ff3d5a', UNKNOWN: '#ffaa00' };
+
+function getCanvas() { return document.getElementById('topoCanvas'); }
+function getCtx()    { return getCanvas().getContext('2d'); }
+
+function isLight() { return document.body.classList.contains('light-mode'); }
+function themeColors() {
+  return isLight()
+    ? { bg: '#f5f8fb', text: '#1a2d3d', subtext: '#5a7080', edge: '#b0c4d8', grid: 'rgba(0,0,0,0.04)' }
+    : { bg: '#0d1520',  text: '#d4e8ff', subtext: '#5a7a9a', edge: '#1e3050', grid: 'rgba(255,255,255,0.03)' };
+}
+
+function resizeCanvas() {
+  const c = getCanvas();
+  const container = document.getElementById('topoContainer');
+  c.width  = container.clientWidth;
+  c.height = container.clientHeight;
+}
+
+async function reloadTopology() {
+  const res  = await fetch('/api/topology');
+  topoData   = await res.json();
+  applyFilter(filterType);
+}
+
+function applyFilter(type) {
+  filterType    = type;
+  filteredNodes = type === 'all' ? topoData.nodes : topoData.nodes.filter(n => n.type === type);
+  const ids     = new Set(filteredNodes.map(n => n.id));
+  filteredEdges = topoData.edges.filter(e => ids.has(e.from) && ids.has(e.to));
+  document.getElementById('topoNodeCount').textContent = filteredNodes.length + ' nodes';
+  if (filteredNodes.length === 0) {
+    document.getElementById('topoEmpty').style.display = 'flex';
+    document.getElementById('topoCanvas').style.display = 'none';
+  } else {
+    document.getElementById('topoEmpty').style.display = 'none';
+    document.getElementById('topoCanvas').style.display = 'block';
+    computeLayout();
+    startRender();
+  }
+}
+
+function changeLayout(mode) {
+  layoutMode = mode;
+  computeLayout();
+}
+
+function computeLayout() {
+  const c = getCanvas();
+  const W = c.width, H = c.height;
+  const nodes = filteredNodes;
+  nodePositions = {};
+
+  if (layoutMode === 'hierarchical') {
+    // Group by location, arrange in rows
+    const groups = {};
+    nodes.forEach(n => {
+      if (!groups[n.location]) groups[n.location] = [];
+      groups[n.location].push(n);
+    });
+    const locs  = Object.keys(groups);
+    const rowH  = H / (locs.length + 1);
+    locs.forEach((loc, li) => {
+      const row = groups[loc];
+      const colW = W / (row.length + 1);
+      row.forEach((n, ni) => {
+        nodePositions[n.id] = {
+          x: colW * (ni + 1),
+          y: rowH * (li + 1),
+          vx: 0, vy: 0
+        };
+      });
+    });
+  } else if (layoutMode === 'grid') {
+    const cols = Math.ceil(Math.sqrt(nodes.length));
+    const cellW = W / (cols + 1);
+    const cellH = H / (Math.ceil(nodes.length / cols) + 1);
+    nodes.forEach((n, i) => {
+      nodePositions[n.id] = {
+        x: cellW * ((i % cols) + 1),
+        y: cellH * (Math.floor(i / cols) + 1),
+        vx: 0, vy: 0
+      };
+    });
+  } else {
+    // Force-directed: random start
+    nodes.forEach(n => {
+      nodePositions[n.id] = {
+        x: 80 + Math.random() * (W - 160),
+        y: 80 + Math.random() * (H - 160),
+        vx: 0, vy: 0
+      };
+    });
+    for (let i = 0; i < 150; i++) forceStep();
+  }
+}
+
+function forceStep() {
+  const nodes = filteredNodes;
+  const W = getCanvas().width, H = getCanvas().height;
+  const k = Math.sqrt((W * H) / (nodes.length || 1));
+
+  // Repulsion
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const pi = nodePositions[nodes[i].id];
+      const pj = nodePositions[nodes[j].id];
+      const dx = pi.x - pj.x, dy = pi.y - pj.y;
+      const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      const force = (k * k) / dist;
+      pi.vx += (dx / dist) * force * 0.01;
+      pi.vy += (dy / dist) * force * 0.01;
+      pj.vx -= (dx / dist) * force * 0.01;
+      pj.vy -= (dy / dist) * force * 0.01;
+    }
+  }
+  // Attraction along edges
+  filteredEdges.forEach(e => {
+    const pf = nodePositions[e.from], pt = nodePositions[e.to];
+    if (!pf || !pt) return;
+    const dx = pt.x - pf.x, dy = pt.y - pf.y;
+    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+    const force = (dist * dist) / k * 0.008;
+    pf.vx += (dx / dist) * force;
+    pf.vy += (dy / dist) * force;
+    pt.vx -= (dx / dist) * force;
+    pt.vy -= (dy / dist) * force;
+  });
+  // Apply velocity + dampen + clamp
+  nodes.forEach(n => {
+    const p = nodePositions[n.id];
+    p.x = Math.max(60, Math.min(W - 60, p.x + p.vx));
+    p.y = Math.max(60, Math.min(H - 60, p.y + p.vy));
+    p.vx *= 0.7; p.vy *= 0.7;
+  });
+}
+
+function drawFrame() {
+  const c   = getCanvas();
+  const ctx = getCtx();
+  const tc  = themeColors();
+  ctx.clearRect(0, 0, c.width, c.height);
+
+  // Background
+  ctx.fillStyle = tc.bg;
+  ctx.fillRect(0, 0, c.width, c.height);
+
+  // Grid
+  ctx.strokeStyle = tc.grid;
+  ctx.lineWidth = 1;
+  for (let x = 0; x < c.width; x += 40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,c.height); ctx.stroke(); }
+  for (let y = 0; y < c.height; y += 40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(c.width,y); ctx.stroke(); }
+
+  // Edges
+  filteredEdges.forEach(e => {
+    const pf = nodePositions[e.from], pt = nodePositions[e.to];
+    if (!pf || !pt) return;
+    ctx.beginPath();
+    ctx.moveTo(pf.x, pf.y);
+    ctx.lineTo(pt.x, pt.y);
+    ctx.strokeStyle = tc.edge;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Arrow
+    const angle = Math.atan2(pt.y - pf.y, pt.x - pf.x);
+    const ar = 30, aw = 6;
+    const ax = pt.x - ar * Math.cos(angle);
+    const ay = pt.y - ar * Math.sin(angle);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - aw * Math.cos(angle - 0.4), ay - aw * Math.sin(angle - 0.4));
+    ctx.lineTo(ax - aw * Math.cos(angle + 0.4), ay - aw * Math.sin(angle + 0.4));
+    ctx.closePath();
+    ctx.fillStyle = tc.edge;
+    ctx.fill();
+  });
+
+  // Nodes
+  filteredNodes.forEach(n => {
+    const p = nodePositions[n.id];
+    if (!p) return;
+    const tc_node = TYPE_COLORS[n.type] || TYPE_COLORS.router;
+    const statusColor = STATUS_COLORS[n.status] || STATUS_COLORS.UNKNOWN;
+    const isSelected = selectedNode && selectedNode.id === n.id;
+    const isHovered  = hoveredNode  && hoveredNode.id  === n.id;
+    const r = isSelected ? 32 : isHovered ? 28 : 24;
+
+    // Glow for selected/hovered
+    if (isSelected || isHovered) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r + 8, 0, Math.PI * 2);
+      ctx.fillStyle = tc_node.stroke.replace(')', ', 0.12)').replace('rgb', 'rgba').replace('#', '');
+      // Simpler glow:
+      const grad = ctx.createRadialGradient(p.x, p.y, r, p.x, p.y, r + 14);
+      grad.addColorStop(0, tc_node.stroke + '33');
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
+
+    // Node circle
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = tc_node.fill;
+    ctx.fill();
+    ctx.strokeStyle = isSelected ? tc_node.stroke : tc_node.stroke + '99';
+    ctx.lineWidth = isSelected ? 2.5 : 1.5;
+    ctx.stroke();
+
+    // Status ring
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r + 4, -Math.PI/2, Math.PI * 1.5);
+    ctx.strokeStyle = statusColor;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Status dot
+    ctx.beginPath();
+    ctx.arc(p.x + r * 0.7, p.y - r * 0.7, 5, 0, Math.PI * 2);
+    ctx.fillStyle = statusColor;
+    ctx.fill();
+    ctx.strokeStyle = tc.bg;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Device type icon (text)
+    const icons = { router:'R', switch:'S', firewall:'F', server:'SV', ap:'AP' };
+    ctx.fillStyle = tc_node.stroke;
+    ctx.font = `bold ${r < 24 ? 9 : 11}px 'Exo 2', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(icons[n.type] || '?', p.x, p.y);
+
+    // Hostname label
+    ctx.fillStyle = tc.text;
+    ctx.font = `600 10px 'Share Tech Mono', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const label = n.label.length > 16 ? n.label.slice(0,14)+'…' : n.label;
+    // Label background
+    const lw = ctx.measureText(label).width + 8;
+    ctx.fillStyle = isLight() ? 'rgba(255,255,255,0.85)' : 'rgba(8,13,20,0.85)';
+    ctx.fillRect(p.x - lw/2, p.y + r + 6, lw, 14);
+    ctx.fillStyle = tc.text;
+    ctx.fillText(label, p.x, p.y + r + 7);
+  });
+}
+
+function startRender() {
+  if (animFrame) cancelAnimationFrame(animFrame);
+  let ticks = 0;
+  function frame() {
+    if (layoutMode === 'force' && ticks < 200) { forceStep(); ticks++; }
+    drawFrame();
+    animFrame = requestAnimationFrame(frame);
+  }
+  frame();
+}
+
+// ─── Mouse Events ──────────────────────────────────────────────────────────
+function getNodeAt(x, y) {
+  return filteredNodes.find(n => {
+    const p = nodePositions[n.id];
+    if (!p) return false;
+    const dx = p.x - x, dy = p.y - y;
+    return Math.sqrt(dx*dx + dy*dy) <= 30;
+  });
+}
+
+function setupEvents() {
+  const c = getCanvas();
+
+  c.addEventListener('mousemove', e => {
+    const rect = c.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    if (dragging) {
+      nodePositions[dragging.id].x = x - dragOffset.x;
+      nodePositions[dragging.id].y = y - dragOffset.y;
+      return;
+    }
+    const n = getNodeAt(x, y);
+    hoveredNode = n || null;
+    c.style.cursor = n ? 'pointer' : 'default';
+    if (n) showTooltip(e.clientX, e.clientY, n);
+    else hideTooltip();
+  });
+
+  c.addEventListener('mousedown', e => {
+    const rect = c.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const n = getNodeAt(x, y);
+    if (n) {
+      dragging = n;
+      dragOffset = { x: x - nodePositions[n.id].x, y: y - nodePositions[n.id].y };
+    }
+  });
+
+  c.addEventListener('mouseup', e => {
+    const rect = c.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    if (!dragging) return;
+    const dx = (x - dragOffset.x - nodePositions[dragging.id].x);
+    const dy = (y - dragOffset.y - nodePositions[dragging.id].y);
+    if (Math.abs(dx) < 3 && Math.abs(dy) < 3) selectNode(dragging);
+    dragging = null;
+  });
+
+  c.addEventListener('mouseleave', () => { dragging = null; hideTooltip(); });
+}
+
+function showTooltip(cx, cy, n) {
+  const tt = document.getElementById('topoTooltip');
+  tt.innerHTML = `
+    <div class="tt-name mono">${n.label}</div>
+    <div class="tt-row"><span>IP</span><span class="mono">${n.ip}</span></div>
+    <div class="tt-row"><span>Type</span><span>${n.type}</span></div>
+    <div class="tt-row"><span>Location</span><span>${n.location}</span></div>
+    <div class="tt-row"><span>Status</span><span class="tt-status ${n.status.toLowerCase()}">${n.status}</span></div>
+    ${n.latency_ms ? `<div class="tt-row"><span>Latency</span><span class="mono">${n.latency_ms.toFixed(1)} ms</span></div>` : ''}
+    <div class="tt-hint">Click to select • Drag to move</div>`;
+  const container = document.getElementById('topoContainer');
+  const rect = container.getBoundingClientRect();
+  let left = cx - rect.left + 14;
+  let top  = cy - rect.top  - 10;
+  if (left + 200 > container.clientWidth) left -= 220;
+  tt.style.left    = left + 'px';
+  tt.style.top     = top  + 'px';
+  tt.style.display = 'block';
+}
+
+function hideTooltip() {
+  document.getElementById('topoTooltip').style.display = 'none';
+}
+
+function selectNode(n) {
+  selectedNode = n;
+  const card = document.getElementById('selectedNodeCard');
+  card.style.display = 'block';
+  document.getElementById('selectedNodeInfo').innerHTML = `
+    <div class="di-row"><span class="di-k">Hostname</span><span class="di-v mono fw-semibold">${n.label}</span></div>
+    <div class="di-row"><span class="di-k">IP Address</span><span class="di-v mono">${n.ip}</span></div>
+    <div class="di-row"><span class="di-k">Type</span><span class="di-v"><span class="type-badge ${n.type}">${n.type}</span></span></div>
+    <div class="di-row"><span class="di-k">Location</span><span class="di-v">${n.location}</span></div>
+    <div class="di-row"><span class="di-k">Status</span><span class="di-v"><span class="status-pill ${n.status.toLowerCase()}"><span class="dot"></span>${n.status}</span></span></div>
+    ${n.latency_ms ? `<div class="di-row"><span class="di-k">Latency</span><span class="di-v mono">${n.latency_ms.toFixed(1)} ms</span></div>` : ''}
+    <div class="di-row"><span class="di-k">Detail Page</span><span class="di-v"><a href="/devices/detail/${n.id}" class="btn-aero-sm"><i class="bi bi-arrow-right-circle-fill"></i> View Full Detail</a></span></div>`;
+}
+
+function clearSelection() {
+  selectedNode = null;
+  document.getElementById('selectedNodeCard').style.display = 'none';
+}
+
+window.addEventListener('load', async () => {
+  resizeCanvas();
+  setupEvents();
+  await reloadTopology();
+});
+window.addEventListener('resize', () => { resizeCanvas(); computeLayout(); });
+</script>
+{% endblock %}

@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}Monitor{% endblock %}
+{% block page_title %}Live Network Monitor{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <div class="monitor-controls">
+    <button class="btn-aero-primary" id="pingAllBtn" onclick="pingAll()">
+      <i class="bi bi-play-fill"></i> Ping All Devices
+    </button>
+    <div class="auto-refresh-wrap">
+      <label class="toggle-label">
+        <input type="checkbox" id="autoRefresh" checked onchange="toggleAutoRefresh()">
+        <span class="toggle-slider"></span>
+        Auto-refresh every 15s
+      </label>
+    </div>
+    <div class="countdown-wrap">
+      Next scan in <span id="countdown" class="mono">15</span>s
+    </div>
+  </div>
+  <div class="monitor-summary" id="monitorSummary">
+    <span class="ms-item up"><i class="bi bi-check-circle-fill"></i> <span id="sumUp">—</span> UP</span>
+    <span class="ms-item down"><i class="bi bi-x-circle-fill"></i> <span id="sumDown">—</span> DOWN</span>
+    <span class="ms-item latency"><i class="bi bi-speedometer"></i> Avg <span id="sumLatency">—</span> ms</span>
+  </div>
+</div>
+
+<!-- Scan progress bar -->
+<div id="scanProgressWrap" style="display:none;margin-top:10px;">
+  <div class="scan-progress-label">
+    <span id="scanProgressLabel" class="muted small">Scanning…</span>
+  </div>
+  <div class="scan-progress-track">
+    <div class="scan-progress-fill" id="scanProgress" style="width:0%"></div>
+  </div>
+</div>
+
+<div class="aero-card mt-3">
+  <div class="card-hdr">
+    <span><i class="bi bi-activity"></i> Device Status — Live</span>
+    <span class="scan-time" id="lastScan">Not scanned yet</span>
+  </div>
+  <div class="table-wrap">
+    <table class="aero-table" id="monitorTable">
+      <thead>
+        <tr>
+          <th>Hostname</th>
+          <th>IP Address</th>
+          <th>Type</th>
+          <th>Location</th>
+          <th>Status</th>
+          <th>Latency</th>
+          <th>Last Check</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="monitorBody">
+        {% for d in devices %}
+        <tr id="row-{{ d.id }}" data-id="{{ d.id }}">
+          <td class="mono fw-semibold">{{ d.hostname }}</td>
+          <td class="mono">{{ d.ip_address }}</td>
+          <td>
+            <span class="type-badge {{ d.device_type }}">
+              {% if d.device_type == 'router' %}<i class="bi bi-router-fill"></i>
+              {% elif d.device_type == 'switch' %}<i class="bi bi-diagram-3-fill"></i>
+              {% elif d.device_type == 'firewall' %}<i class="bi bi-shield-fill"></i>
+              {% elif d.device_type == 'server' %}<i class="bi bi-server"></i>
+              {% else %}<i class="bi bi-wifi"></i>{% endif %}
+              {{ d.device_type }}
+            </span>
+          </td>
+          <td><i class="bi bi-geo-alt-fill loc-icon"></i> {{ d.location }}</td>
+          <td class="status-cell">
+            <span class="status-pill {{ d.status.lower() }}">
+              <span class="dot"></span>{{ d.status }}
+            </span>
+          </td>
+          <td class="latency-cell mono">
+            {% if d.latency_ms %}{{ "%.1f"|format(d.latency_ms) }} ms{% else %}—{% endif %}
+          </td>
+          <td class="time-cell mono muted">
+            {% if d.last_checked %}{{ d.last_checked.strftime('%H:%M:%S') }}{% else %}—{% endif %}
+          </td>
+          <td>
+            <button class="action-btn ping-btn" onclick="pingSingle({{ d.id }})" title="Ping now">
+              <i class="bi bi-reception-4"></i>
+            </button>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="empty-row">No devices found. <a href="/devices/add">Add one →</a></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let autoRefreshEnabled = true;
+let countdown = 15;
+let pingInProgress = false;
+let activeESS = null;
+let allResults = {};
+
+// ─── Row update ───────────────────────────────────────────────────────────────
+function updateRow(r) {
+  const row = document.getElementById('row-' + r.id);
+  if (!row) return;
+  const sc = r.status === 'UP' ? 'up' : r.status === 'DOWN' ? 'down' : 'unknown';
+  row.querySelector('.status-cell').innerHTML =
+    `<span class="status-pill ${sc}"><span class="dot"></span>${r.status}</span>`;
+  row.querySelector('.latency-cell').textContent =
+    r.latency_ms ? r.latency_ms.toFixed(1) + ' ms' : '—';
+  row.querySelector('.time-cell').textContent = r.timestamp || '—';
+  row.classList.add('row-flash');
+  setTimeout(() => row.classList.remove('row-flash'), 800);
+  allResults[r.id] = r;
+  updateSummary();
+}
+
+function updateSummary() {
+  const vals = Object.values(allResults);
+  const up   = vals.filter(r => r.status === 'UP').length;
+  const down = vals.filter(r => r.status === 'DOWN').length;
+  const lats = vals.filter(r => r.latency_ms).map(r => r.latency_ms);
+  const avg  = lats.length ? (lats.reduce((a,b)=>a+b,0)/lats.length).toFixed(1) : '—';
+  document.getElementById('sumUp').textContent      = up;
+  document.getElementById('sumDown').textContent    = down;
+  document.getElementById('sumLatency').textContent = avg;
+}
+
+// ─── Progress bar ─────────────────────────────────────────────────────────────
+function setProgress(done, total) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  document.getElementById('scanProgress').style.width = pct + '%';
+  document.getElementById('scanProgressWrap').style.display = total ? 'block' : 'none';
+  document.getElementById('scanProgressLabel').textContent =
+    done < total ? `Scanning… ${done}/${total}` : `Scan complete — ${total} devices`;
+}
+
+// ─── Main scan using SSE streaming ───────────────────────────────────────────
+function pingAll() {
+  if (pingInProgress) {
+    // Cancel current scan
+    if (activeESS) { activeESS.close(); activeESS = null; }
+    setScanBtn(false);
+    pingInProgress = false;
+    return;
+  }
+
+  pingInProgress = true;
+  resetCountdown();
+  setScanBtn(true);
+  setProgress(0, 0);
+
+  // Close any existing stream
+  if (activeESS) { activeESS.close(); activeESS = null; }
+
+  const sse = new EventSource('/api/monitor/stream');
+  activeESS = sse;
+
+  sse.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+
+    if (data.type === 'start') {
+      setProgress(0, data.total);
+
+    } else if (data.type === 'result') {
+      updateRow(data);
+      setProgress(data.done, data.total);
+
+    } else if (data.type === 'done') {
+      sse.close();
+      activeESS = null;
+      pingInProgress = false;
+      setScanBtn(false);
+      setProgress(data.total, data.total);
+      document.getElementById('lastScan').textContent =
+        'Last scan: ' + new Date().toLocaleTimeString();
+      setTimeout(() => {
+        document.getElementById('scanProgressWrap').style.display = 'none';
+      }, 2000);
+    }
+  };
+
+  sse.onerror = () => {
+    sse.close();
+    activeESS    = null;
+    pingInProgress = false;
+    setScanBtn(false);
+  };
+}
+
+function setScanBtn(scanning) {
+  const btn = document.getElementById('pingAllBtn');
+  btn.innerHTML = scanning
+    ? '<i class="bi bi-stop-fill"></i> Stop Scan'
+    : '<i class="bi bi-play-fill"></i> Ping All Devices';
+  btn.classList.toggle('btn-danger-outline', scanning);
+}
+
+// ─── Single device ping ───────────────────────────────────────────────────────
+async function pingSingle(id) {
+  const row = document.getElementById('row-' + id);
+  if (row) row.querySelector('.status-cell').innerHTML =
+    '<span class="status-pill unknown"><span class="dot pulse"></span>Pinging…</span>';
+  try {
+    const res = await fetch('/api/monitor/ping/' + id);
+    updateRow(await res.json());
+  } catch(e) { console.error(e); }
+}
+
+// ─── Countdown ────────────────────────────────────────────────────────────────
+function resetCountdown() {
+  countdown = 15;
+  document.getElementById('countdown').textContent = countdown;
+}
+
+function toggleAutoRefresh() {
+  autoRefreshEnabled = document.getElementById('autoRefresh').checked;
+  if (autoRefreshEnabled) resetCountdown();
+}
+
+setInterval(() => {
+  if (!autoRefreshEnabled || pingInProgress) return;
+  countdown--;
+  document.getElementById('countdown').textContent = countdown;
+  if (countdown <= 0) { pingAll(); countdown = 15; }
+}, 1000);
+
+window.addEventListener('load', () => setTimeout(pingAll, 300));
+</script>
+{% endblock %}

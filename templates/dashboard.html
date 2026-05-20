@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Network Dashboard{% endblock %}
+
+{% block alert_banner %}
+{% if down > 0 %}
+<div class="alert-banner">
+  <i class="bi bi-exclamation-octagon-fill"></i>
+  <strong>{{ down }} device{{ 's' if down != 1 }} DOWN</strong> — Immediate attention required
+  <a href="/monitor">View Monitor →</a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<!-- Stats row -->
+<div class="stats-row">
+  <div class="stat-card total">
+    <div class="stat-icon"><i class="bi bi-hdd-network-fill"></i></div>
+    <div class="stat-body">
+      <div class="stat-value">{{ total }}</div>
+      <div class="stat-label">Total Devices</div>
+    </div>
+  </div>
+  <div class="stat-card up">
+    <div class="stat-icon"><i class="bi bi-check-circle-fill"></i></div>
+    <div class="stat-body">
+      <div class="stat-value">{{ up }}</div>
+      <div class="stat-label">Online</div>
+    </div>
+  </div>
+  <div class="stat-card down">
+    <div class="stat-icon"><i class="bi bi-x-circle-fill"></i></div>
+    <div class="stat-body">
+      <div class="stat-value">{{ down }}</div>
+      <div class="stat-label">Offline</div>
+    </div>
+  </div>
+  <div class="stat-card unknown">
+    <div class="stat-icon"><i class="bi bi-question-circle-fill"></i></div>
+    <div class="stat-body">
+      <div class="stat-value">{{ unknown }}</div>
+      <div class="stat-label">Unknown</div>
+    </div>
+  </div>
+</div>
+
+<!-- Health bar -->
+<div class="health-bar-wrap">
+  <div class="health-label">
+    <span>Network Health</span>
+    <span class="health-pct" id="healthPct">
+      {% if total > 0 %}{{ "%.0f"|format(up/total*100) }}%{% else %}—{% endif %}
+    </span>
+  </div>
+  <div class="health-bar">
+    <div class="health-fill" style="width: {% if total > 0 %}{{ (up/total*100)|round|int }}{% else %}0{% endif %}%"></div>
+  </div>
+</div>
+
+<div class="row g-4 mt-1">
+  <!-- Device overview table -->
+  <div class="col-lg-8">
+    <div class="aero-card">
+      <div class="card-hdr">
+        <span><i class="bi bi-table"></i> All Devices</span>
+        <a href="/devices/add" class="btn-aero-sm"><i class="bi bi-plus-lg"></i> Add Device</a>
+      </div>
+      <div class="table-wrap">
+        <table class="aero-table">
+          <thead>
+            <tr>
+              <th>Hostname</th>
+              <th>IP Address</th>
+              <th>Type</th>
+              <th>Location</th>
+              <th>Status</th>
+              <th>Latency</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in devices %}
+            <tr>
+              <td class="mono">{{ d.hostname }}</td>
+              <td class="mono">{{ d.ip_address }}</td>
+              <td>
+                <span class="type-badge {{ d.device_type }}">
+                  {% if d.device_type == 'router' %}<i class="bi bi-router-fill"></i>
+                  {% elif d.device_type == 'switch' %}<i class="bi bi-diagram-3-fill"></i>
+                  {% elif d.device_type == 'firewall' %}<i class="bi bi-shield-fill"></i>
+                  {% elif d.device_type == 'server' %}<i class="bi bi-server"></i>
+                  {% else %}<i class="bi bi-wifi"></i>{% endif %}
+                  {{ d.device_type }}
+                </span>
+              </td>
+              <td><i class="bi bi-geo-alt-fill loc-icon"></i> {{ d.location }}</td>
+              <td>
+                <span class="status-pill {{ d.status.lower() }}">
+                  <span class="dot"></span>{{ d.status }}
+                </span>
+              </td>
+              <td class="mono">
+                {% if d.latency_ms %}{{ "%.1f"|format(d.latency_ms) }} ms{% else %}—{% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="empty-row">No devices found. <a href="/devices/add">Add one →</a></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alerts panel -->
+  <div class="col-lg-4">
+    <div class="aero-card alerts-card">
+      <div class="card-hdr">
+        <span><i class="bi bi-bell-fill"></i> Recent Alerts</span>
+        <span class="badge-count">{{ alerts|length }}</span>
+      </div>
+      <div class="alerts-list" id="alertsList">
+        {% for alert in alerts %}
+        <div class="alert-item">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <span>{{ alert }}</span>
+        </div>
+        {% else %}
+        <div class="no-alerts">
+          <i class="bi bi-check-all"></i> No alerts — all clear
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Location summary -->
+    <div class="aero-card mt-4">
+      <div class="card-hdr"><span><i class="bi bi-map-fill"></i> Airport Locations</span></div>
+      {% set locations = {} %}
+      {% for d in devices %}
+        {% if d.location not in locations %}
+          {% set _ = locations.update({d.location: []}) %}
+        {% endif %}
+      {% endfor %}
+      <div class="location-list">
+        {% set seen = [] %}
+        {% for d in devices %}
+          {% if d.location not in seen %}
+            {% set _ = seen.append(d.location) %}
+            {% set loc_devices = devices | selectattr('location', 'equalto', d.location) | list %}
+            {% set loc_up = loc_devices | selectattr('status', 'equalto', 'UP') | list | length %}
+            <div class="loc-item">
+              <div class="loc-name"><i class="bi bi-airplane-engines-fill"></i> {{ d.location }}</div>
+              <div class="loc-stats">
+                <span class="loc-total">{{ loc_devices|length }} devices</span>
+                <span class="loc-up">{{ loc_up }} up</span>
+              </div>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="last-updated">Last updated: {{ now }}</div>
+{% endblock %}

@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}SNMP Poll{% endblock %}
+{% block page_title %}SNMP Polling{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <div class="snmp-controls">
+    <div class="field-inline">
+      <label>Community</label>
+      <input type="text" id="snmpCommunity" value="public" placeholder="public">
+    </div>
+    <div class="field-inline">
+      <label>Version</label>
+      <select id="snmpVersion">
+        <option value="2c">SNMPv2c</option>
+        <option value="1">SNMPv1</option>
+        <option value="3">SNMPv3</option>
+      </select>
+    </div>
+    <button class="btn-aero-primary" onclick="pollAll()">
+      <i class="bi bi-broadcast"></i> Poll All Devices
+    </button>
+  </div>
+  <div id="snmpStatus"></div>
+</div>
+
+<div class="row g-4 mt-1">
+  <div class="col-lg-4">
+    <div class="aero-card">
+      <div class="card-hdr"><span><i class="bi bi-hdd-network-fill"></i> Devices</span><span class="count-badge">{{ devices|length }}</span></div>
+      <div class="snmp-device-list">
+        {% for d in devices %}
+        <div class="snmp-device-item" id="sdev-{{ d.id }}" onclick="pollDevice({{ d.id }})" title="Click to poll">
+          <div class="sdev-icon {{ d.device_type }}">
+            {% if d.device_type == 'router' %}<i class="bi bi-router-fill"></i>
+            {% elif d.device_type == 'switch' %}<i class="bi bi-diagram-3-fill"></i>
+            {% elif d.device_type == 'firewall' %}<i class="bi bi-shield-fill"></i>
+            {% elif d.device_type == 'server' %}<i class="bi bi-server"></i>
+            {% else %}<i class="bi bi-wifi"></i>{% endif %}
+          </div>
+          <div class="sdev-info">
+            <div class="sdev-name mono">{{ d.hostname }}</div>
+            <div class="sdev-ip muted">{{ d.ip_address }}</div>
+          </div>
+          <div class="sdev-state" id="sstate-{{ d.id }}">
+            <i class="bi bi-circle text-muted"></i>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="aero-card" id="snmpResultCard">
+      <div class="card-hdr">
+        <span><i class="bi bi-bar-chart-steps"></i> SNMP Result</span>
+        <span id="snmpResultHost" class="mono muted">Select a device to poll</span>
+      </div>
+      <div id="snmpResultBody" class="snmp-result-empty">
+        <i class="bi bi-broadcast"></i>
+        <p>Click a device or "Poll All" to fetch SNMP data</p>
+        <p class="small muted">Uses <code>snmpget</code> (net-snmp) if installed,<br>otherwise shows simulated data for demo</p>
+      </div>
+    </div>
+
+    <div class="aero-card mt-4" id="snmpAllResults" style="display:none">
+      <div class="card-hdr"><span><i class="bi bi-table"></i> Bulk Poll Results</span><span class="count-badge" id="pollCount">0</span></div>
+      <div class="table-wrap">
+        <table class="aero-table">
+          <thead>
+            <tr><th>Hostname</th><th>IP</th><th>System Name</th><th>Uptime</th><th>Interfaces</th><th>Location</th><th>Method</th></tr>
+          </thead>
+          <tbody id="bulkPollBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getCommunity() { return document.getElementById('snmpCommunity').value || 'public'; }
+function getVersion()   { return document.getElementById('snmpVersion').value; }
+
+async function pollDevice(id) {
+  const items = document.querySelectorAll('.snmp-device-item');
+  items.forEach(i => i.classList.remove('active'));
+  document.getElementById('sdev-' + id).classList.add('active');
+  document.getElementById('sstate-' + id).innerHTML = '<i class="bi bi-arrow-repeat spin text-accent"></i>';
+
+  const community = getCommunity();
+  const version   = getVersion();
+  try {
+    const res  = await fetch(`/api/snmp/${id}?community=${community}&version=${version}`);
+    const data = await res.json();
+    renderSingleResult(data);
+    document.getElementById('sstate-' + id).innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--up)"></i>';
+  } catch(e) {
+    document.getElementById('sstate-' + id).innerHTML = '<i class="bi bi-x-circle-fill" style="color:var(--down)"></i>';
+  }
+}
+
+function renderSingleResult(d) {
+  document.getElementById('snmpResultHost').textContent = d.hostname || d.ip;
+  const isReal = d.method === 'snmpget';
+  document.getElementById('snmpResultBody').innerHTML = `
+    <div class="snmp-result-grid">
+      <div class="snmp-kv"><span class="sk">System Description</span><span class="sv mono">${d.sysDescr || '—'}</span></div>
+      <div class="snmp-kv"><span class="sk">System Name</span><span class="sv mono">${d.sysName || '—'}</span></div>
+      <div class="snmp-kv"><span class="sk">Uptime</span><span class="sv mono">${d.sysUpTime || '—'}</span></div>
+      <div class="snmp-kv"><span class="sk">Location</span><span class="sv">${d.sysLocation || '—'}</span></div>
+      <div class="snmp-kv"><span class="sk">Contact</span><span class="sv">${d.sysContact || '—'}</span></div>
+      <div class="snmp-kv"><span class="sk">Interfaces</span><span class="sv mono">${d.ifNumber || '—'}</span></div>
+      <div class="snmp-kv"><span class="sk">IP Address</span><span class="sv mono">${d.ip}</span></div>
+      <div class="snmp-kv"><span class="sk">Polled At</span><span class="sv mono">${d.polled_at}</span></div>
+      <div class="snmp-kv"><span class="sk">Data Source</span><span class="sv">
+        <span class="status-pill ${isReal ? 'up' : 'unknown'}"><span class="dot"></span>${isReal ? 'Live SNMP' : 'Simulated'}</span>
+      </span></div>
+    </div>`;
+}
+
+async function pollAll() {
+  const devices = document.querySelectorAll('.snmp-device-item');
+  document.getElementById('snmpAllResults').style.display = 'block';
+  document.getElementById('bulkPollBody').innerHTML = '';
+  let count = 0;
+
+  for (const el of devices) {
+    const id = el.id.replace('sdev-', '');
+    el.classList.add('polling');
+    document.getElementById('sstate-' + id).innerHTML = '<i class="bi bi-arrow-repeat spin" style="color:var(--accent)"></i>';
+    try {
+      const res  = await fetch(`/api/snmp/${id}?community=${getCommunity()}&version=${getVersion()}`);
+      const data = await res.json();
+      const isReal = data.method === 'snmpget';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="mono fw-semibold">${data.hostname}</td>
+        <td class="mono">${data.ip}</td>
+        <td class="mono small">${data.sysName || '—'}</td>
+        <td class="mono small">${(data.sysUpTime || '—').split('(')[0].trim()}</td>
+        <td class="mono">${data.ifNumber || '—'}</td>
+        <td class="small muted">${data.sysLocation || '—'}</td>
+        <td><span class="status-pill ${isReal ? 'up' : 'unknown'}" style="font-size:10px;"><span class="dot"></span>${isReal ? 'Live' : 'Sim'}</span></td>`;
+      document.getElementById('bulkPollBody').appendChild(tr);
+      document.getElementById('sstate-' + id).innerHTML = '<i class="bi bi-check-circle-fill" style="color:var(--up)"></i>';
+      count++;
+      document.getElementById('pollCount').textContent = count;
+    } catch(e) {
+      document.getElementById('sstate-' + id).innerHTML = '<i class="bi bi-x-circle-fill" style="color:var(--down)"></i>';
+    }
+    el.classList.remove('polling');
+  }
+}
+</script>
+{% endblock %}

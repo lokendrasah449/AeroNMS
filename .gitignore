@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+*.db
+logs/
+backups/
+email_config.json
+.env
+*.zip
