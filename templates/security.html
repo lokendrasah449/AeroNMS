@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+{% block title %}Security{% endblock %}
+{% block page_title %}Security Monitoring — Wazuh{% endblock %}
+
+{% block content %}
+
+<!-- Summary KPI cards -->
+<div class="stats-row" id="secKpis">
+  <div class="stat-card total">
+    <div class="stat-icon"><i class="bi bi-cpu-fill"></i></div>
+    <div class="stat-body">
+      <div class="stat-value" id="kpiTotal">—</div>
+      <div class="stat-label">Total Agents</div>
+    </div>
+  </div>
+  <div class="stat-card up">
+    <div class="stat-icon"><i class="bi bi-shield-check-fill"></i></div>
+    <div class="stat-body">
+      <div class="stat-value" id="kpiActive">—</div>
+      <div class="stat-label">Active Agents</div>
+    </div>
+  </div>
+  <div class="stat-card down">
+    <div class="stat-icon"><i class="bi bi-shield-x-fill"></i></div>
+    <div class="stat-body">
+      <div class="stat-value" id="kpiDisconn">—</div>
+      <div class="stat-label">Disconnected</div>
+    </div>
+  </div>
+  <div class="stat-card unknown">
+    <div class="stat-icon"><i class="bi bi-exclamation-triangle-fill"></i></div>
+    <div class="stat-body">
+      <div class="stat-value" id="kpiAlerts">—</div>
+      <div class="stat-label">Total Alerts</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+
+  <!-- Alerts Table -->
+  <div class="col-lg-8">
+    <div class="aero-card">
+      <div class="card-hdr">
+        <span><i class="bi bi-shield-exclamation"></i> Security Alerts</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="severityFilter" class="field-inline" onchange="applyFilter()" style="width:120px;padding:4px 8px;font-size:12px;background:var(--bg-hover);border:1px solid var(--border);color:var(--text-primary);border-radius:5px;">
+            <option value="all">All Levels</option>
+            <option value="critical">Critical (13+)</option>
+            <option value="high">High (10-12)</option>
+            <option value="medium">Medium (7-9)</option>
+            <option value="low">Low (4-6)</option>
+          </select>
+          <button class="btn-aero-sm" onclick="loadAlerts()">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+          </button>
+          <span id="wazuhSource" class="status-pill unknown" style="font-size:10px;padding:2px 8px;">
+            <span class="dot pulse"></span>Loading…
+          </span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="aero-table" id="alertsTable">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Level</th>
+              <th>Rule</th>
+              <th>Description</th>
+              <th>Agent</th>
+              <th>Groups</th>
+            </tr>
+          </thead>
+          <tbody id="alertsBody">
+            <tr><td colspan="6" class="empty-row">
+              <i class="bi bi-arrow-repeat spin"></i> Loading alerts…
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right column -->
+  <div class="col-lg-4">
+
+    <!-- Agents list -->
+    <div class="aero-card">
+      <div class="card-hdr">
+        <span><i class="bi bi-cpu-fill"></i> Wazuh Agents</span>
+        <span class="count-badge" id="agentCount">0</span>
+      </div>
+      <div class="snmp-device-list" id="agentsList" style="max-height:280px;">
+        <div class="no-alerts"><i class="bi bi-arrow-repeat spin"></i> Loading…</div>
+      </div>
+    </div>
+
+    <!-- Alert breakdown chart -->
+    <div class="aero-card mt-4">
+      <div class="card-hdr"><span><i class="bi bi-bar-chart-fill"></i> Alert Severity Breakdown</span></div>
+      <div style="padding:16px;">
+        <canvas id="severityChart" height="180"></canvas>
+      </div>
+    </div>
+
+    <!-- Wazuh Config -->
+    <div class="aero-card mt-4">
+      <div class="card-hdr">
+        <span><i class="bi bi-gear-fill"></i> Wazuh Connection</span>
+        <button class="btn-aero-sm" onclick="toggleConfigPanel()">
+          <i class="bi bi-pencil-fill"></i> Configure
+        </button>
+      </div>
+      <div id="configPanel" style="display:none;" class="aero-form">
+        <div class="form-grid">
+          <div class="field-group">
+            <label>Wazuh Host</label>
+            <input type="text" id="wHost" value="{{ cfg.get('host','localhost') }}" placeholder="localhost or IP">
+          </div>
+          <div class="field-group">
+            <label>Port</label>
+            <input type="text" id="wPort" value="{{ cfg.get('port', 55000) }}" placeholder="55000">
+          </div>
+          <div class="field-group">
+            <label>Username</label>
+            <input type="text" id="wUser" value="{{ cfg.get('username','wazuh-wui') }}">
+          </div>
+          <div class="field-group">
+            <label>Password</label>
+            <input type="password" id="wPass" value="{{ cfg.get('password','') }}" placeholder="Wazuh API password">
+          </div>
+          <div class="field-group full-width">
+            <label class="toggle-label" style="flex-direction:row;gap:10px;align-items:center;font-size:13px;">
+              <input type="checkbox" id="wEnabled" {% if cfg.get('enabled') %}checked{% endif %}
+                     onchange="updateEnabledLabel(this)">
+              <span class="toggle-slider"></span>
+              <span id="wEnabledLabel">
+                {% if cfg.get('enabled') %}Live Wazuh connection <strong style="color:var(--up)">ENABLED</strong>
+                {% else %}Using <strong style="color:var(--unknown)">simulated</strong> data{% endif %}
+              </span>
+            </label>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn-aero" onclick="testWazuh()"><i class="bi bi-plug-fill"></i> Test</button>
+          <button class="btn-aero-primary" onclick="saveWazuhConfig()"><i class="bi bi-check-lg"></i> Save</button>
+        </div>
+        <div id="wazuhConfigResult" class="mt-3"></div>
+      </div>
+      <div id="configSummary" style="padding:14px 20px;">
+        <div class="di-row"><span class="di-k">Host</span><span class="di-v mono">{{ cfg.get('host','localhost') }}:{{ cfg.get('port',55000) }}</span></div>
+        <div class="di-row"><span class="di-k">Status</span><span class="di-v">
+          {% if cfg.get('enabled') %}
+          <span class="status-pill up"><span class="dot"></span>Live Mode</span>
+          {% else %}
+          <span class="status-pill unknown"><span class="dot"></span>Simulation Mode</span>
+          {% endif %}
+        </span></div>
+        <div class="di-row"><span class="di-k">Info</span>
+          <span class="di-v small muted">
+            {% if cfg.get('enabled') %}Connecting to Wazuh Manager API
+            {% else %}No Wazuh? No problem — demo data shown automatically{% endif %}
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+let allAlerts = [];
+let severityChart = null;
+
+// ─── Load data ────────────────────────────────────────────────────────────────
+async function loadAll() {
+  await Promise.all([loadSummary(), loadAlerts(), loadAgents()]);
+}
+
+async function loadSummary() {
+  const res  = await fetch('/api/wazuh/summary');
+  const data = await res.json();
+  document.getElementById('kpiTotal').textContent   = data.total   ?? '—';
+  document.getElementById('kpiActive').textContent  = data.active  ?? '—';
+  document.getElementById('kpiDisconn').textContent = data.disconnected ?? '—';
+}
+
+async function loadAlerts() {
+  const res  = await fetch('/api/wazuh/alerts?limit=100');
+  const data = await res.json();
+  allAlerts  = data.alerts || [];
+
+  // Source badge
+  const badge = document.getElementById('wazuhSource');
+  const isLive = data.source === 'live';
+  badge.className = `status-pill ${isLive ? 'up' : 'unknown'}`;
+  badge.innerHTML = `<span class="dot"></span>${isLive ? 'Live Wazuh' : 'Simulated'}`;
+
+  document.getElementById('kpiAlerts').textContent = allAlerts.length;
+  applyFilter();
+  renderSeverityChart(allAlerts);
+}
+
+async function loadAgents() {
+  const res  = await fetch('/api/wazuh/agents');
+  const data = await res.json();
+  const agents = data.agents || [];
+  document.getElementById('agentCount').textContent = agents.length;
+
+  const list = document.getElementById('agentsList');
+  if (!agents.length) {
+    list.innerHTML = '<div class="no-alerts">No agents found</div>';
+    return;
+  }
+  list.innerHTML = agents.map(a => {
+    const sc = a.status === 'active' ? 'up' : a.status === 'disconnected' ? 'down' : 'unknown';
+    const label = a.status === 'active' ? 'Active' : a.status === 'disconnected' ? 'Disconnected' : 'Never Connected';
+    return `
+      <div class="snmp-device-item">
+        <div class="sdev-icon server"><i class="bi bi-cpu-fill"></i></div>
+        <div class="sdev-info">
+          <div class="sdev-name mono">${a.name}</div>
+          <div class="sdev-ip muted">${a.ip} &nbsp;·&nbsp; ${a.os}</div>
+        </div>
+        <span class="status-pill ${sc}" style="font-size:10px;padding:2px 7px;">
+          <span class="dot"></span>${label}
+        </span>
+      </div>`;
+  }).join('');
+}
+
+// ─── Alert table ──────────────────────────────────────────────────────────────
+function applyFilter() {
+  const filter = document.getElementById('severityFilter').value;
+  const filtered = filter === 'all'
+    ? allAlerts
+    : allAlerts.filter(a => a.severity === filter);
+
+  const tbody = document.getElementById('alertsBody');
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-row">No alerts matching filter</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(a => {
+    const time = a.timestamp ? a.timestamp.replace('T',' ').slice(0,19) : '—';
+    const groups = (a.groups || []).slice(0,2).map(g =>
+      `<span class="type-badge router" style="font-size:10px;padding:1px 5px;">${g}</span>`
+    ).join(' ');
+    return `
+      <tr>
+        <td class="mono muted" style="font-size:11px;white-space:nowrap;">${time}</td>
+        <td>
+          <span class="sec-level-badge" style="background:${a.severity_color}22;color:${a.severity_color};border:1px solid ${a.severity_color}55;padding:2px 8px;border-radius:4px;font-size:11px;font-family:var(--font-mono);font-weight:700;">
+            L${a.level} ${a.severity.toUpperCase()}
+          </span>
+        </td>
+        <td class="mono muted" style="font-size:11px;">${a.rule_id}</td>
+        <td style="font-size:12px;">${a.description}</td>
+        <td class="mono" style="font-size:11px;">${a.agent_name}</td>
+        <td>${groups}</td>
+      </tr>`;
+  }).join('');
+}
+
+// ─── Severity Chart ───────────────────────────────────────────────────────────
+function renderSeverityChart(alerts) {
+  const counts = { critical:0, high:0, medium:0, low:0, info:0 };
+  alerts.forEach(a => { if (counts[a.severity] !== undefined) counts[a.severity]++; });
+  const isLight = document.body.classList.contains('light-mode');
+  const textColor = isLight ? '#5a7080' : '#5a7a9a';
+
+  if (severityChart) severityChart.destroy();
+  severityChart = new Chart(document.getElementById('severityChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Critical', 'High', 'Medium', 'Low', 'Info'],
+      datasets: [{
+        data: [counts.critical, counts.high, counts.medium, counts.low, counts.info],
+        backgroundColor: ['#ff3d5a', '#ff6b35', '#ffaa00', '#00aaff', '#5a7a9a'],
+        borderWidth: 0,
+        hoverOffset: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { color: textColor, font: { size: 11 }, padding: 10, boxWidth: 12 }
+        },
+        tooltip: {
+          backgroundColor: isLight ? '#fff' : '#111c2b',
+          borderColor: isLight ? '#d0dce8' : '#1e3050',
+          borderWidth: 1,
+          titleColor: textColor,
+          bodyColor: textColor,
+        }
+      },
+      cutout: '65%',
+    }
+  });
+}
+
+// ─── Config ───────────────────────────────────────────────────────────────────
+function toggleConfigPanel() {
+  const p = document.getElementById('configPanel');
+  const s = document.getElementById('configSummary');
+  if (p.style.display === 'none') { p.style.display='block'; s.style.display='none'; }
+  else { p.style.display='none'; s.style.display='block'; }
+}
+
+function getConfigFormData() {
+  return new URLSearchParams({
+    host:     document.getElementById('wHost').value,
+    port:     document.getElementById('wPort').value,
+    username: document.getElementById('wUser').value,
+    password: document.getElementById('wPass').value,
+    enabled:  document.getElementById('wEnabled').checked ? 'on' : 'off',
+  });
+}
+
+async function saveWazuhConfig() {
+  const res  = await fetch('/api/wazuh/config', { method:'POST', body: getConfigFormData() });
+  const data = await res.json();
+  showConfigResult(data.success ? '✓ Configuration saved' : '✗ ' + data.error, data.success ? 'success' : 'error');
+  if (data.success) setTimeout(() => { toggleConfigPanel(); loadAll(); }, 1000);
+}
+
+async function testWazuh() {
+  showConfigResult('<i class="bi bi-arrow-repeat spin"></i> Testing connection…', 'info');
+  const body = new URLSearchParams({
+    host:     document.getElementById('wHost').value,
+    port:     document.getElementById('wPort').value,
+    username: document.getElementById('wUser').value,
+    password: document.getElementById('wPass').value,
+  });
+  const res  = await fetch('/api/wazuh/test', { method:'POST', body });
+  const data = await res.json();
+  showConfigResult(
+    data.success ? `✓ Connected — ${data.version}` : `✗ ${data.message}`,
+    data.success ? 'success' : 'error'
+  );
+}
+
+function showConfigResult(msg, type) {
+  const el = document.getElementById('wazuhConfigResult');
+  el.innerHTML = `<div class="status-toast ${type}">${msg}</div>`;
+  if (type !== 'info') setTimeout(() => el.innerHTML = '', 4000);
+}
+
+function updateEnabledLabel(cb) {
+  document.getElementById('wEnabledLabel').innerHTML = cb.checked
+    ? 'Live Wazuh connection <strong style="color:var(--up)">ENABLED</strong>'
+    : 'Using <strong style="color:var(--unknown)">simulated</strong> data';
+}
+
+window.addEventListener('load', loadAll);
+</script>
+{% endblock %}

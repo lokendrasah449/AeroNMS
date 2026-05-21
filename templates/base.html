@@ -40,6 +40,9 @@
     <a href="/backup"  class="nav-item {% if '/backup' in request.url.path %}active{% endif %}">
       <i class="bi bi-cloud-arrow-down-fill"></i><span>Backups</span>
     </a>
+    <a href="/security" class="nav-item {% if '/security' in request.url.path %}active{% endif %}">
+      <i class="bi bi-shield-fill-exclamation"></i><span>Security</span>
+    </a>
     <a href="/alerts"  class="nav-item {% if '/alerts' in request.url.path %}active{% endif %}">
       <i class="bi bi-envelope-fill"></i><span>Email Alerts</span>
     </a>

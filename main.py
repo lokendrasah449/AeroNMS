@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 _ping_executor = ThreadPoolExecutor(max_workers=30)
 
 from database import SessionLocal, engine, Base
-import models, monitor, crud
+import models, monitor, crud, wazuh
 
 Base.metadata.create_all(bind=engine)
 
@@ -441,3 +441,75 @@ async def get_alerts_log(request: Request):
             alerts = [l.strip() for l in f.readlines()[-30:] if l.strip()]
             alerts.reverse()
     return JSONResponse({"alerts": alerts})
+
+# ─── Wazuh Security Routes ────────────────────────────────────────────────────
+@app.get("/security", response_class=HTMLResponse)
+async def security_page(request: Request, db: Session = Depends(get_db)):
+    if not is_authenticated(request):
+        return RedirectResponse("/login", status_code=302)
+    cfg = wazuh.load_config()
+    return templates.TemplateResponse("security.html", {
+        "request": request, "cfg": cfg
+    })
+
+@app.get("/api/wazuh/alerts")
+async def wazuh_alerts(request: Request, limit: int = 50):
+    if not is_authenticated(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    result = wazuh.get_alerts(limit)
+    # Enrich with severity label and color
+    for a in result["alerts"]:
+        a["severity"]       = wazuh.severity_label(a["level"])
+        a["severity_color"] = wazuh.severity_color(a["level"])
+    return JSONResponse(result)
+
+@app.get("/api/wazuh/agents")
+async def wazuh_agents(request: Request):
+    if not is_authenticated(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(wazuh.get_agents())
+
+@app.get("/api/wazuh/summary")
+async def wazuh_summary(request: Request):
+    if not is_authenticated(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return JSONResponse(wazuh.get_summary())
+
+@app.post("/api/wazuh/config")
+async def save_wazuh_config(
+    request: Request,
+    host:     str = Form(...),
+    port:     str = Form("55000"),
+    username: str = Form("wazuh-wui"),
+    password: str = Form(...),
+    enabled:  str = Form("off"),
+):
+    if not is_authenticated(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    cfg = {
+        "host":      host,
+        "port":      int(port),
+        "username":  username,
+        "password":  password,
+        "enabled":   enabled == "on",
+        "verify_ssl": False,
+    }
+    wazuh.save_config(cfg)
+    return JSONResponse({"success": True})
+
+@app.post("/api/wazuh/test")
+async def test_wazuh(
+    request: Request,
+    host:     str = Form(...),
+    port:     str = Form("55000"),
+    username: str = Form("wazuh-wui"),
+    password: str = Form(...),
+):
+    if not is_authenticated(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    cfg = {
+        "host": host, "port": int(port),
+        "username": username, "password": password,
+        "verify_ssl": False, "enabled": True,
+    }
+    return JSONResponse(wazuh.test_connection(cfg))
