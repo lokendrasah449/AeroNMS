@@ -18,6 +18,18 @@ from database import SessionLocal, engine, Base
 import models, monitor, crud, wazuh
 
 Base.metadata.create_all(bind=engine)
+def auto_seed():
+    try:
+        db = SessionLocal()
+        existing = db.query(models.Device).count()
+        db.close()
+        if existing == 0:
+            import seed
+            seed.seed()
+    except Exception as e:
+        print(f"Auto-seed skipped: {e}")
+
+auto_seed()
 
 app = FastAPI(title="AeroNMS", version="1.3.0")
 app.mount("/static", StaticFiles(directory="static"), name="static")
