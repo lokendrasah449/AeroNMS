@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Access Denied{% endblock %}
+{% block page_title %}Access Denied{% endblock %}
+
+{% block content %}
+<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;gap:20px;">
+  <div style="font-size:72px;color:var(--down);">
+    <i class="bi bi-shield-x-fill"></i>
+  </div>
+  <h2 style="color:var(--text-primary);font-size:24px;font-weight:700;">Access Denied</h2>
+  <p style="color:var(--text-muted);max-width:400px;line-height:1.7;">
+    You don't have permission to access this page.
+    Your current role is
+    <strong style="color:var(--accent)">{{ user.role | capitalize if user else 'Unknown' }}</strong>
+    which does not have the required privileges.
+  </p>
+  <div style="display:flex;gap:12px;">
+    <a href="/" class="btn-aero-primary"><i class="bi bi-speedometer2"></i> Go to Dashboard</a>
+    <a href="/logout" class="btn-aero"><i class="bi bi-box-arrow-left"></i> Logout</a>
+  </div>
+  <p class="muted small">Contact your system administrator to request access.</p>
+</div>
+{% endblock %}

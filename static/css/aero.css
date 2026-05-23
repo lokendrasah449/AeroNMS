@@ -1629,3 +1629,98 @@ body.light-mode .combo-wrap input[list]:focus {
   border-radius: 4px;
   white-space: nowrap;
 }
+
+/* ============================================================
+   AeroNMS v1.8 — RBAC, Admin Panel, Audit Log styles
+   ============================================================ */
+
+/* ─── Nav Divider ─────────────────────────────────────────── */
+.nav-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 12px;
+}
+
+/* ─── Sidebar User Card ───────────────────────────────────── */
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-hover);
+  border-radius: var(--radius);
+  margin-bottom: 10px;
+}
+.su-avatar {
+  width: 34px; height: 34px;
+  background: linear-gradient(135deg, #003d7a, #0066cc);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+}
+.su-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.su-role { font-size: 10px; margin-top: 1px; }
+
+/* ─── Modal ───────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+.modal-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+  animation: fadeIn 0.2s ease;
+}
+.modal-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.modal-hdr i { color: var(--accent); margin-right: 6px; }
+.modal-close {
+  background: none; border: none;
+  color: var(--text-muted); cursor: pointer; font-size: 14px;
+  padding: 4px; border-radius: 4px; transition: all 0.15s;
+}
+.modal-close:hover { color: var(--down); background: var(--down-bg); }
+
+/* ─── Audit Action Badges ─────────────────────────────────── */
+.audit-action-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.3px;
+}
+.audit-danger  { background: var(--down-bg);    color: var(--down);    border: 1px solid rgba(255,61,90,0.2); }
+.audit-success { background: var(--up-bg);      color: var(--up);      border: 1px solid rgba(0,232,150,0.2); }
+.audit-info    { background: var(--accent-dim); color: var(--accent);  border: 1px solid rgba(0,170,255,0.2); }
+.audit-warning { background: var(--unknown-bg); color: var(--unknown); border: 1px solid rgba(255,170,0,0.2); }
+.audit-neutral { background: var(--bg-hover);   color: var(--text-muted); border: 1px solid var(--border); }
+
+/* Light mode modal */
+body.light-mode .modal-box {
+  background: #fff;
+  border-color: #c8d8e8;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.15);
+}
+body.light-mode .modal-hdr { border-bottom-color: #d0dce8; }
+body.light-mode .sidebar-user { background: rgba(0,0,0,0.04); }

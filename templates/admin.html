@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block title %}Admin Panel{% endblock %}
+{% block page_title %}Admin Panel{% endblock %}
+
+{% block content %}
+
+{% if error %}
+<div class="alert-banner" style="background:rgba(255,61,90,0.1);border-color:rgba(255,61,90,0.4);color:#ff8099;margin-bottom:12px;">
+  <i class="bi bi-exclamation-triangle-fill"></i> {{ error }}
+</div>
+{% endif %}
+
+<div class="row g-4">
+
+  <!-- User list -->
+  <div class="col-lg-8">
+    <div class="aero-card">
+      <div class="card-hdr">
+        <span><i class="bi bi-people-fill"></i> System Users</span>
+        <span class="count-badge">{{ users|length }}</span>
+      </div>
+      <div class="table-wrap">
+        <table class="aero-table">
+          <thead>
+            <tr><th>#</th><th>Username</th><th>Full Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last Login</th><th>Actions</th></tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td class="mono muted">{{ u.id }}</td>
+              <td class="mono fw-semibold">{{ u.username }}</td>
+              <td>{{ u.full_name or '—' }}</td>
+              <td class="small muted">{{ u.email or '—' }}</td>
+              <td>
+                {% set rl = role_labels.get(u.role, ('Unknown','unknown')) %}
+                <span class="type-badge {{ rl[1] }}">{{ rl[0] }}</span>
+              </td>
+              <td>
+                <span class="status-pill {{ 'up' if u.is_active else 'down' }}">
+                  <span class="dot"></span>{{ 'Active' if u.is_active else 'Disabled' }}
+                </span>
+              </td>
+              <td class="mono muted small">
+                {{ u.last_login.strftime('%Y-%m-%d %H:%M') if u.last_login else 'Never' }}
+              </td>
+              <td>
+                <div class="action-btns">
+                  <button class="action-btn edit" title="Edit user"
+                    onclick="openEditModal({{ u.id }}, '{{ u.full_name }}', '{{ u.email }}', '{{ u.role }}', {{ 'true' if u.is_active else 'false' }})">
+                    <i class="bi bi-pencil-fill"></i>
+                  </button>
+                  <button class="action-btn ping-btn" title="Reset password"
+                    onclick="openResetModal({{ u.id }}, '{{ u.username }}')">
+                    <i class="bi bi-key-fill"></i>
+                  </button>
+                  {% if u.username != user.username %}
+                  <form method="post" action="/admin/users/delete/{{ u.id }}" style="margin:0"
+                        onsubmit="return confirm('Delete user {{ u.username }}?')">
+                    <button type="submit" class="action-btn delete" title="Delete user">
+                      <i class="bi bi-trash3-fill"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Recent audit log -->
+    <div class="aero-card mt-4">
+      <div class="card-hdr">
+        <span><i class="bi bi-journal-text"></i> Recent Activity</span>
+        <a href="/admin/audit" class="btn-aero-sm"><i class="bi bi-arrow-right"></i> Full Log</a>
+      </div>
+      <div class="table-wrap">
+        <table class="aero-table">
+          <thead>
+            <tr><th>Time</th><th>User</th><th>Role</th><th>Action</th><th>Detail</th><th>IP</th></tr>
+          </thead>
+          <tbody>
+            {% for log in audit_log %}
+            <tr>
+              <td class="mono muted small">{{ log.timestamp.strftime('%m-%d %H:%M:%S') if log.timestamp else '—' }}</td>
+              <td class="mono fw-semibold">{{ log.username }}</td>
+              <td>
+                {% set rl = role_labels.get(log.role, ('?','unknown')) %}
+                <span class="type-badge {{ rl[1] }}" style="font-size:10px;padding:1px 6px;">{{ rl[0] }}</span>
+              </td>
+              <td>
+                <span class="audit-action {{ log.action | lower | replace('_','-') }}">{{ log.action }}</span>
+              </td>
+              <td class="small muted">{{ log.detail or '—' }}</td>
+              <td class="mono muted small">{{ log.ip_address or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right column -->
+  <div class="col-lg-4">
+
+    <!-- Add user form -->
+    <div class="aero-card">
+      <div class="card-hdr"><span><i class="bi bi-person-plus-fill"></i> Add New User</span></div>
+      <form method="post" action="/admin/users/add" class="aero-form">
+        <div class="field-group" style="margin-bottom:14px">
+          <label>Username <span class="required">*</span></label>
+          <input type="text" name="username" placeholder="e.g. john_noc" required>
+        </div>
+        <div class="field-group" style="margin-bottom:14px">
+          <label>Password <span class="required">*</span></label>
+          <input type="password" name="password" placeholder="Min 6 characters" required>
+        </div>
+        <div class="field-group" style="margin-bottom:14px">
+          <label>Full Name</label>
+          <input type="text" name="full_name" placeholder="e.g. John Tamang">
+        </div>
+        <div class="field-group" style="margin-bottom:14px">
+          <label>Email</label>
+          <input type="email" name="email" placeholder="john@buddhaair.com.np">
+        </div>
+        <div class="field-group" style="margin-bottom:14px">
+          <label>Role <span class="required">*</span></label>
+          <select name="role">
+            <option value="viewer">Viewer — Read only</option>
+            <option value="noc">NOC Engineer — Operations</option>
+            <option value="admin">Admin — Full access</option>
+          </select>
+        </div>
+        <button type="submit" class="btn-aero-primary" style="width:100%">
+          <i class="bi bi-person-plus-fill"></i> Create User
+        </button>
+      </form>
+    </div>
+
+    <!-- Role permissions summary -->
+    <div class="aero-card mt-4">
+      <div class="card-hdr"><span><i class="bi bi-shield-lock-fill"></i> Role Permissions</span></div>
+      <div class="detail-info-list">
+        <div class="di-row">
+          <span class="di-k"><span class="type-badge router">Admin</span></span>
+          <span class="di-v small">Full access — devices, users, config, security, audit</span>
+        </div>
+        <div class="di-row">
+          <span class="di-k"><span class="type-badge up">NOC</span></span>
+          <span class="di-v small">Monitor, ping, backup, SNMP, security — no user management</span>
+        </div>
+        <div class="di-row">
+          <span class="di-k"><span class="type-badge unknown">Viewer</span></span>
+          <span class="di-v small">Read-only — dashboard, devices, topology, security</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal-overlay" id="editModal" style="display:none" onclick="closeModal('editModal')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-hdr">
+      <span><i class="bi bi-pencil-fill"></i> Edit User</span>
+      <button class="modal-close" onclick="closeModal('editModal')"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <form method="post" id="editForm" class="aero-form" style="padding:20px">
+      <div class="form-grid">
+        <div class="field-group full-width">
+          <label>Full Name</label>
+          <input type="text" name="full_name" id="edit_full_name">
+        </div>
+        <div class="field-group full-width">
+          <label>Email</label>
+          <input type="email" name="email" id="edit_email">
+        </div>
+        <div class="field-group">
+          <label>Role</label>
+          <select name="role" id="edit_role">
+            <option value="viewer">Viewer</option>
+            <option value="noc">NOC Engineer</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label>Status</label>
+          <label class="toggle-label" style="flex-direction:row;gap:10px;align-items:center;margin-top:8px">
+            <input type="checkbox" name="is_active" id="edit_active">
+            <span class="toggle-slider"></span>
+            <span>Active</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-aero" onclick="closeModal('editModal')">Cancel</button>
+        <button type="submit" class="btn-aero-primary"><i class="bi bi-check-lg"></i> Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Reset Password Modal -->
+<div class="modal-overlay" id="resetModal" style="display:none" onclick="closeModal('resetModal')">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-hdr">
+      <span><i class="bi bi-key-fill"></i> Reset Password</span>
+      <button class="modal-close" onclick="closeModal('resetModal')"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <form method="post" id="resetForm" class="aero-form" style="padding:20px">
+      <p id="resetUsername" class="muted small" style="margin-bottom:16px"></p>
+      <div class="field-group" style="margin-bottom:16px">
+        <label>New Password <span class="required">*</span></label>
+        <input type="password" name="new_password" placeholder="Enter new password" required minlength="6">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn-aero" onclick="closeModal('resetModal')">Cancel</button>
+        <button type="submit" class="btn-aero-primary"><i class="bi bi-key-fill"></i> Reset Password</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openEditModal(id, fullName, email, role, isActive) {
+  document.getElementById('editForm').action = `/admin/users/edit/${id}`;
+  document.getElementById('edit_full_name').value = fullName;
+  document.getElementById('edit_email').value = email;
+  document.getElementById('edit_role').value = role;
+  document.getElementById('edit_active').checked = isActive;
+  document.getElementById('editModal').style.display = 'flex';
+}
+function openResetModal(id, username) {
+  document.getElementById('resetForm').action = `/admin/users/reset/${id}`;
+  document.getElementById('resetUsername').textContent = `Resetting password for: ${username}`;
+  document.getElementById('resetModal').style.display = 'flex';
+}
+function closeModal(id) {
+  document.getElementById(id).style.display = 'none';
+}
+</script>
+{% endblock %}

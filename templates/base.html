@@ -22,33 +22,66 @@
   </div>
 
   <nav class="sidebar-nav">
-    <a href="/"       class="nav-item {% if request.url.path == '/' %}active{% endif %}">
+    <a href="/" class="nav-item {% if request.url.path == '/' %}active{% endif %}">
       <i class="bi bi-speedometer2"></i><span>Dashboard</span>
     </a>
     <a href="/devices" class="nav-item {% if '/devices' in request.url.path %}active{% endif %}">
       <i class="bi bi-hdd-network-fill"></i><span>Devices</span>
     </a>
+
+    {# NOC + Admin only #}
+    {% if user and user.role in ['admin', 'noc'] %}
     <a href="/monitor" class="nav-item {% if '/monitor' in request.url.path %}active{% endif %}">
       <i class="bi bi-activity"></i><span>Monitor</span>
     </a>
+    {% endif %}
+
     <a href="/topology" class="nav-item {% if '/topology' in request.url.path %}active{% endif %}">
       <i class="bi bi-diagram-3-fill"></i><span>Topology</span>
     </a>
-    <a href="/snmp"    class="nav-item {% if '/snmp' in request.url.path %}active{% endif %}">
+
+    {% if user and user.role in ['admin', 'noc'] %}
+    <a href="/snmp" class="nav-item {% if '/snmp' in request.url.path %}active{% endif %}">
       <i class="bi bi-broadcast"></i><span>SNMP</span>
     </a>
-    <a href="/backup"  class="nav-item {% if '/backup' in request.url.path %}active{% endif %}">
+    <a href="/backup" class="nav-item {% if '/backup' in request.url.path %}active{% endif %}">
       <i class="bi bi-cloud-arrow-down-fill"></i><span>Backups</span>
     </a>
+    {% endif %}
+
     <a href="/security" class="nav-item {% if '/security' in request.url.path %}active{% endif %}">
       <i class="bi bi-shield-fill-exclamation"></i><span>Security</span>
     </a>
-    <a href="/alerts"  class="nav-item {% if '/alerts' in request.url.path %}active{% endif %}">
+
+    {# Admin only #}
+    {% if user and user.role == 'admin' %}
+    <a href="/alerts" class="nav-item {% if '/alerts' in request.url.path %}active{% endif %}">
       <i class="bi bi-envelope-fill"></i><span>Email Alerts</span>
     </a>
+    <div class="nav-divider"></div>
+    <a href="/admin" class="nav-item {% if '/admin' in request.url.path and '/audit' not in request.url.path %}active{% endif %}">
+      <i class="bi bi-people-fill"></i><span>User Management</span>
+    </a>
+    <a href="/admin/audit" class="nav-item {% if '/audit' in request.url.path %}active{% endif %}">
+      <i class="bi bi-journal-text"></i><span>Audit Log</span>
+    </a>
+    {% endif %}
   </nav>
 
   <div class="sidebar-footer">
+    {% if user %}
+    <div class="sidebar-user">
+      <div class="su-avatar">{{ user.username[0].upper() }}</div>
+      <div class="su-info">
+        <div class="su-name">{{ user.full_name or user.username }}</div>
+        <div class="su-role">
+          {% if user.role == 'admin' %}<span style="color:#00aaff">Admin</span>
+          {% elif user.role == 'noc' %}<span style="color:#00e896">NOC Engineer</span>
+          {% else %}<span style="color:#ffaa00">Viewer</span>{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
     <div class="status-pill online"><span class="dot"></span>System Online</div>
     <a href="/logout" class="logout-link"><i class="bi bi-box-arrow-left"></i> Logout</a>
   </div>

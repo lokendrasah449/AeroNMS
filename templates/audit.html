@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Audit Log{% endblock %}
+{% block page_title %}Audit Log{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <div class="monitor-controls">
+    <div class="field-inline">
+      <label>Filter</label>
+      <input type="text" id="auditSearch" placeholder="Search user, action, detail…"
+             oninput="filterAudit()" style="width:220px;padding:7px 12px;background:var(--bg-card);
+             border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius);
+             font-size:13px;outline:none;">
+    </div>
+    <div class="field-inline">
+      <label>Action</label>
+      <select id="actionFilter" onchange="filterAudit()"
+              style="padding:7px 12px;background:var(--bg-card);border:1px solid var(--border);
+              color:var(--text-primary);border-radius:var(--radius);font-size:13px;outline:none;">
+        <option value="">All Actions</option>
+        <option>LOGIN</option>
+        <option>LOGOUT</option>
+        <option>LOGIN_FAILED</option>
+        <option>ADD_DEVICE</option>
+        <option>EDIT_DEVICE</option>
+        <option>DELETE_DEVICE</option>
+        <option>BACKUP_DEVICE</option>
+        <option>BACKUP_ALL</option>
+        <option>EXPORT_CSV</option>
+        <option>CREATE_USER</option>
+        <option>EDIT_USER</option>
+        <option>DELETE_USER</option>
+        <option>RESET_PASSWORD</option>
+        <option>CONFIG_EMAIL_ALERTS</option>
+        <option>CONFIG_WAZUH</option>
+      </select>
+    </div>
+  </div>
+  <span class="count-badge" id="auditCount">{{ audit_log|length }}</span>
+</div>
+
+<div class="aero-card mt-3">
+  <div class="card-hdr">
+    <span><i class="bi bi-journal-text"></i> System Activity Log</span>
+    <span class="muted small">Last 200 entries</span>
+  </div>
+  <div class="table-wrap">
+    <table class="aero-table" id="auditTable">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>User</th>
+          <th>Role</th>
+          <th>Action</th>
+          <th>Detail</th>
+          <th>IP Address</th>
+        </tr>
+      </thead>
+      <tbody id="auditBody">
+        {% for log in audit_log %}
+        <tr class="audit-row">
+          <td class="mono muted small" style="white-space:nowrap">
+            {{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else '—' }}
+          </td>
+          <td class="mono fw-semibold">{{ log.username }}</td>
+          <td>
+            {% if log.role == 'admin' %}
+              <span class="type-badge router" style="font-size:10px">Admin</span>
+            {% elif log.role == 'noc' %}
+              <span class="type-badge up" style="font-size:10px">NOC</span>
+            {% else %}
+              <span class="type-badge unknown" style="font-size:10px">Viewer</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="audit-action-badge
+              {% if 'DELETE' in log.action or 'FAILED' in log.action %}audit-danger
+              {% elif 'ADD' in log.action or 'CREATE' in log.action %}audit-success
+              {% elif 'LOGIN' == log.action or 'LOGOUT' == log.action %}audit-info
+              {% elif 'CONFIG' in log.action or 'RESET' in log.action %}audit-warning
+              {% else %}audit-neutral{% endif %}">
+              {{ log.action }}
+            </span>
+          </td>
+          <td class="small muted">{{ log.detail or '—' }}</td>
+          <td class="mono muted small">{{ log.ip_address or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty-row">No audit entries yet</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterAudit() {
+  const search = document.getElementById('auditSearch').value.toLowerCase();
+  const action = document.getElementById('actionFilter').value.toLowerCase();
+  const rows   = document.querySelectorAll('.audit-row');
+  let visible  = 0;
+  rows.forEach(row => {
+    const text   = row.textContent.toLowerCase();
+    const rowAct = row.cells[3].textContent.trim().toLowerCase();
+    const show   = text.includes(search) && (!action || rowAct === action);
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('auditCount').textContent = visible;
+}
+</script>
+{% endblock %}
