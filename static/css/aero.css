@@ -131,6 +131,8 @@ a:hover { color: #4dc8ff; }
 }
 
 .sidebar-nav {
+  overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
   padding: 12px 8px;
   display: flex;
@@ -804,7 +806,8 @@ a:hover { color: #4dc8ff; }
 
 /* ─── Responsive ──────────────────────────────────────── */
 @media (max-width: 768px) {
-  .aero-sidebar { transform: translateX(-100%); }
+  .aero-sidebar { transform: translateX(-100%);
+                  overflow: hidden; }
   .aero-sidebar.open { transform: translateX(0); }
   .aero-main { margin-left: 0; }
   .sidebar-toggle { display: block; }
